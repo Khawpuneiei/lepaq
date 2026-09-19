@@ -17,6 +17,25 @@ import type { RawSegment } from "@/lib/ai/transcribe";
 export const LOW_CONFIDENCE = 0.6;
 
 /**
+ * Diarization hands a fresh speaker label to almost every backchannel noise —
+ * a stray "Mm-hmm" or "Yep" becomes its own speaker. On a real 61-minute
+ * two-person call that produced 50 labels, of which 36 accounted for 2.4% of
+ * the speech.
+ *
+ * Asking the user to identify 50 voices would wreck the one-screen review the
+ * whole design depends on, so labels are split into the ones that carry the
+ * conversation and the ones that do not. Minor labels are never sent to the
+ * model (they cost tokens and dilute the real evidence) and the review screen
+ * tucks them behind a disclosure, left unassigned.
+ *
+ * The thresholds are deliberately generous: a genuine third participant who
+ * only speaks for twenty seconds still counts as major.
+ */
+export function isMajorLabel(seconds: number, turns: number) {
+  return seconds >= 15 || turns >= 8;
+}
+
+/**
  * Pick the lines most likely to identify a speaker.
  *
  * Self-introductions cluster at the start, so the opening turns are always
@@ -82,6 +101,8 @@ export interface ProposedMapping {
   reason: string;
   sampleQuotes: string[];
   segmentCount: number;
+  /** False for backchannel-only labels; see isMajorLabel. */
+  major: boolean;
 }
 
 export async function mapSpeakers(args: {
@@ -96,28 +117,37 @@ export async function mapSpeakers(args: {
 
   if (samples.length === 0) return [];
 
-  const { value } = await structuredCall({
-    system: SPEAKER_MAPPING_SYSTEM_PROMPT,
-    user: buildSpeakerMappingUserMessage({
-      title: args.title,
-      shortNote: args.shortNote,
-      meetingDate: args.meetingDate,
-      participants: args.participants,
-      samples,
-      chunked: args.chunked,
-    }),
-    schemaName: "speaker_mapping",
-    schema: SPEAKER_MAPPING_JSON_SCHEMA,
-    parse: (v) => SpeakerMappingResult.parse(v),
-  });
+  const major = samples.filter((s) => isMajorLabel(s.totalSeconds, s.segmentCount));
+  const minor = samples.filter((s) => !isMajorLabel(s.totalSeconds, s.segmentCount));
+
+  const byLabel = new Map<string, { display_name: string | null; confidence: number; reason: string }>();
+
+  // Only the labels that carry the conversation are worth an LLM call.
+  if (major.length > 0) {
+    const { value } = await structuredCall({
+      system: SPEAKER_MAPPING_SYSTEM_PROMPT,
+      user: buildSpeakerMappingUserMessage({
+        title: args.title,
+        shortNote: args.shortNote,
+        meetingDate: args.meetingDate,
+        participants: args.participants,
+        samples: major,
+        chunked: args.chunked,
+      }),
+      schemaName: "speaker_mapping",
+      schema: SPEAKER_MAPPING_JSON_SCHEMA,
+      parse: (v) => SpeakerMappingResult.parse(v),
+    });
+
+    for (const m of value.mappings) byLabel.set(m.speaker_label, m);
+  }
 
   const known = new Set(args.participants.map((p) => p.display_name));
-  const byLabel = new Map(value.mappings.map((m) => [m.speaker_label, m]));
 
   // Drive the result off the samples, not the model output: every label the
   // transcript actually contains must appear on the review screen, even if
   // the model forgot to mention it.
-  return samples.map((s) => {
+  const map = (s: MappingSample, isMajor: boolean): ProposedMapping => {
     const m = byLabel.get(s.label);
     // A name the model invented is worse than no name at all.
     const name = m?.display_name && known.has(m.display_name) ? m.display_name : null;
@@ -127,9 +157,17 @@ export async function mapSpeakers(args: {
       rawSpeakerLabel: s.label,
       displayName: confidence >= LOW_CONFIDENCE ? name : null,
       confidence,
-      reason: m?.reason ?? "No confident match.",
+      reason: isMajor
+        ? (m?.reason ?? "No confident match.")
+        : "Short interjections only — left unassigned.",
       sampleQuotes: s.quotes.map((q) => q.text),
       segmentCount: s.segmentCount,
+      major: isMajor,
     };
-  });
+  };
+
+  return [
+    ...major.map((s) => map(s, true)),
+    ...minor.map((s) => map(s, false)),
+  ];
 }

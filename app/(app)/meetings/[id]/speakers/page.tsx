@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { SpeakerReview, type SpeakerRow } from "@/components/meeting/speaker-review";
+import { isMajorLabel } from "@/lib/ai/mapSpeakers";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Speakers · Rapport" };
@@ -60,17 +61,23 @@ export default async function SpeakersPage({ params }: PageProps<"/meetings/[id]
 
   const chunked = new Set((segments ?? []).map((s) => s.chunk_index)).size > 1;
 
+  // major/minor is derived here rather than stored, so the threshold can be
+  // tuned in one place without a migration
   const rows: SpeakerRow[] = mappings
-    .map((m) => ({
-      raw_speaker_label: m.raw_speaker_label,
-      participant_id: m.participant_id,
-      confidence: m.confidence,
-      reason: m.reason,
-      sample_quotes: (m.sample_quotes ?? []) as string[],
-      segment_count: m.segment_count,
-      seconds: seconds.get(m.raw_speaker_label) ?? 0,
-      chunk_index: chunkOf.get(m.raw_speaker_label) ?? null,
-    }))
+    .map((m) => {
+      const secs = seconds.get(m.raw_speaker_label) ?? 0;
+      return {
+        raw_speaker_label: m.raw_speaker_label,
+        participant_id: m.participant_id,
+        confidence: m.confidence,
+        reason: m.reason,
+        sample_quotes: (m.sample_quotes ?? []) as string[],
+        segment_count: m.segment_count,
+        seconds: secs,
+        chunk_index: chunkOf.get(m.raw_speaker_label) ?? null,
+        major: isMajorLabel(secs, m.segment_count ?? 0),
+      };
+    })
     .sort((a, b) => b.seconds - a.seconds);
 
   return (

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Quote, TriangleAlert } from "lucide-react";
+import { ChevronRight, Loader2, Quote, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ export interface SpeakerRow {
   segment_count: number | null;
   seconds: number;
   chunk_index: number | null;
+  /** False for backchannel-only voices; they are hidden behind a disclosure. */
+  major: boolean;
 }
 
 export interface ParticipantOption {
@@ -44,10 +46,12 @@ export interface ParticipantOption {
  * The single screen that removes the biggest quality risk in the product:
  * attributing a quote to the wrong person (spec 5.2).
  *
- * On a split recording there is one row per part per voice, so a 90-minute
- * meeting can show twenty-odd rows. They are ordered by how much each label
- * actually said, so the handful that matter are at the top and the rest are
- * one-line walk-ons the user can leave blank.
+ * Two things keep it to one screen on a long recording. Labels are ordered by
+ * how much each voice actually said, so the handful that matter are at the
+ * top. And backchannel-only labels — the "mm-hmm" voices diarization invents
+ * by the dozen — are collapsed out of the way rather than each demanding a
+ * decision. On a real 61-minute call that is the difference between 17 rows
+ * and 50.
  */
 export function SpeakerReview({
   meetingId,
@@ -74,10 +78,15 @@ export function SpeakerReview({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMinor, setShowMinor] = useState(false);
 
+  const major = useMemo(() => rows.filter((r) => r.major), [rows]);
+  const minor = useMemo(() => rows.filter((r) => !r.major), [rows]);
+
+  // Only count the voices actually being asked about.
   const blanks = useMemo(
-    () => rows.filter((r) => assignments[r.raw_speaker_label] === UNASSIGNED).length,
-    [rows, assignments],
+    () => major.filter((r) => assignments[r.raw_speaker_label] === UNASSIGNED).length,
+    [major, assignments],
   );
 
   async function confirm() {
@@ -109,6 +118,88 @@ export function SpeakerReview({
       toast.error(message);
       setBusy(false);
     }
+  }
+
+  function renderRow(row: SpeakerRow) {
+    const low = (row.confidence ?? 0) < LOW_CONFIDENCE;
+    const unset = assignments[row.raw_speaker_label] === UNASSIGNED;
+
+    return (
+      <Card
+        key={row.raw_speaker_label}
+        className={cn(
+          "p-5",
+          row.major &&
+            low &&
+            unset &&
+            "border-butter-strong bg-butter-soft dark:bg-butter",
+        )}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium">
+                Voice {row.raw_speaker_label.replace(/^c\d+_/, "")}
+              </span>
+              {chunked && row.chunk_index !== null && (
+                <Badge variant="outline" className="text-xs">
+                  part {row.chunk_index + 1}
+                </Badge>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {row.segment_count ?? 0} turns · {formatDuration(row.seconds)}
+              </span>
+              {row.major && low && (
+                <Badge
+                  variant="outline"
+                  className="border-butter-strong bg-butter text-on-butter"
+                >
+                  not sure
+                </Badge>
+              )}
+            </div>
+
+            {row.reason && (
+              <p className="mt-1 text-xs text-muted-foreground">{row.reason}</p>
+            )}
+
+            <ul className="mt-3 space-y-1.5">
+              {row.sample_quotes.slice(0, 2).map((q, i) => (
+                <li key={i} className="flex gap-2 text-sm text-muted-foreground">
+                  <Quote className="mt-0.5 size-3 shrink-0" aria-hidden />
+                  <span className="italic">{q}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="w-full sm:w-56">
+            <Select
+              value={assignments[row.raw_speaker_label]}
+              onValueChange={(v) =>
+                setAssignments((a) => ({ ...a, [row.raw_speaker_label]: v }))
+              }
+            >
+              <SelectTrigger
+                className="w-full"
+                aria-label={`Who is voice ${row.raw_speaker_label}?`}
+              >
+                <SelectValue placeholder="Choose a person" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={UNASSIGNED}>Not sure / someone else</SelectItem>
+                {participants.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.display_name}
+                    {p.is_me ? " (you)" : p.position ? ` — ${p.position}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </Card>
+    );
   }
 
   if (busy) {
@@ -144,90 +235,37 @@ export function SpeakerReview({
         <p className="mt-4 flex items-center gap-2 text-sm text-on-butter">
           <TriangleAlert className="size-4 shrink-0" aria-hidden />
           {blanks} {blanks === 1 ? "voice has" : "voices have"} no name yet. You
-          can leave them — they will read as “Speaker A” in the transcript.
+          can leave them — they will read as &ldquo;Speaker A&rdquo; in the
+          transcript.
         </p>
       )}
 
-      <div className="mt-6 space-y-3">
-        {rows.map((row) => {
-          const low = (row.confidence ?? 0) < LOW_CONFIDENCE;
-          const unset = assignments[row.raw_speaker_label] === UNASSIGNED;
+      <div className="mt-6 space-y-3">{major.map(renderRow)}</div>
 
-          return (
-            <Card
-              key={row.raw_speaker_label}
+      {minor.length > 0 && (
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => setShowMinor((v) => !v)}
+            aria-expanded={showMinor}
+            className="flex w-full items-center gap-2 rounded-md border border-dashed px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+          >
+            <ChevronRight
               className={cn(
-                "p-5",
-                low && unset && "border-butter-strong bg-butter-soft dark:bg-butter",
+                "size-4 shrink-0 transition-transform",
+                showMinor && "rotate-90",
               )}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">
-                      Voice {row.raw_speaker_label.replace(/^c\d+_/, "")}
-                    </span>
-                    {chunked && row.chunk_index !== null && (
-                      <Badge variant="outline" className="text-xs">
-                        part {row.chunk_index + 1}
-                      </Badge>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {row.segment_count ?? 0} turns · {formatDuration(row.seconds)}
-                    </span>
-                    {low && (
-                      <Badge
-                        variant="outline"
-                        className="border-butter-strong bg-butter text-on-butter"
-                      >
-                        not sure
-                      </Badge>
-                    )}
-                  </div>
-
-                  {row.reason && (
-                    <p className="mt-1 text-xs text-muted-foreground">{row.reason}</p>
-                  )}
-
-                  <ul className="mt-3 space-y-1.5">
-                    {row.sample_quotes.slice(0, 2).map((q, i) => (
-                      <li key={i} className="flex gap-2 text-sm text-muted-foreground">
-                        <Quote className="mt-0.5 size-3 shrink-0" aria-hidden />
-                        <span className="italic">{q}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="w-full sm:w-56">
-                  <Select
-                    value={assignments[row.raw_speaker_label]}
-                    onValueChange={(v) =>
-                      setAssignments((a) => ({ ...a, [row.raw_speaker_label]: v }))
-                    }
-                  >
-                    <SelectTrigger
-                      className="w-full"
-                      aria-label={`Who is voice ${row.raw_speaker_label}?`}
-                    >
-                      <SelectValue placeholder="Choose a person" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={UNASSIGNED}>Not sure / someone else</SelectItem>
-                      {participants.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.display_name}
-                          {p.is_me ? " (you)" : p.position ? ` — ${p.position}` : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+              aria-hidden
+            />
+            <span className="flex-1">
+              {minor.length} quieter {minor.length === 1 ? "voice" : "voices"} —
+              one-word interjections like &ldquo;mm-hmm&rdquo; that the
+              transcriber split into their own speakers. Safe to leave alone.
+            </span>
+          </button>
+          {showMinor && <div className="mt-3 space-y-3">{minor.map(renderRow)}</div>}
+        </div>
+      )}
 
       {error && (
         <p className="mt-4 rounded-md border border-danger/40 bg-danger-soft p-4 text-sm text-on-danger-soft">
