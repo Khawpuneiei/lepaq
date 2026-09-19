@@ -1,0 +1,87 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+
+import { ApiError, apiError, friendlyError, requireOwnedMeeting, requireUser } from "@/lib/api";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { runAnalysis } from "@/lib/pipeline/runAnalysis";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+const Body = z.object({
+  mappings: z.array(
+    z.object({
+      raw_speaker_label: z.string(),
+      participant_id: z.string().uuid().nullable(),
+    }),
+  ),
+});
+
+/**
+ * Runs once the user has confirmed the speaker mapping.
+ *
+ * Confirming does two things before the analysis call: it rewrites every
+ * transcript line to the canonical speaker name, and it records which raw
+ * diarization labels the user accepted. For a chunked recording several raw
+ * labels (c0_A, c1_B, c2_A) usually collapse onto one participant, which is
+ * exactly what makes a long meeting readable.
+ */
+export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[id]/analyze">) {
+  const { id } = await ctx.params;
+  const admin = createAdminClient();
+
+  try {
+    const user = await requireUser();
+    await requireOwnedMeeting(id, user.id);
+
+    const parsed = Body.safeParse(await request.json());
+    if (!parsed.success) throw new ApiError("Invalid speaker mapping.", 422);
+
+    const { data: participants } = await admin
+      .from("meeting_participants")
+      .select("id, display_name")
+      .eq("meeting_id", id);
+
+    const nameById = new Map((participants ?? []).map((p) => [p.id, p.display_name]));
+
+    // 1. record what the user chose
+    for (const m of parsed.data.mappings) {
+      await admin
+        .from("speaker_mappings")
+        .update({ participant_id: m.participant_id, confirmed: true })
+        .eq("meeting_id", id)
+        .eq("raw_speaker_label", m.raw_speaker_label);
+    }
+
+    // 2. rewrite the transcript to canonical names
+    for (const m of parsed.data.mappings) {
+      const label = m.participant_id
+        ? (nameById.get(m.participant_id) ?? `Speaker ${m.raw_speaker_label}`)
+        : `Speaker ${m.raw_speaker_label}`;
+
+      await admin
+        .from("transcript_segments")
+        .update({ speaker_label: label })
+        .eq("meeting_id", id)
+        .eq("raw_speaker_label", m.raw_speaker_label);
+    }
+
+    // 3. point each participant at one of their labels, for the talk ratio
+    for (const p of participants ?? []) {
+      const theirs = parsed.data.mappings.filter((m) => m.participant_id === p.id);
+      await admin
+        .from("meeting_participants")
+        .update({ speaker_label: theirs.length ? p.display_name : null })
+        .eq("id", p.id);
+    }
+
+    const result = await runAnalysis(admin, id, user.id);
+    return NextResponse.json({ ok: true, ...result });
+  } catch (err) {
+    await admin
+      .from("meetings")
+      .update({ status: "failed", error: friendlyError(err), progress_note: null })
+      .eq("id", id);
+    return apiError(err);
+  }
+}

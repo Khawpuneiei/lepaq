@@ -1,0 +1,34 @@
+import { Suspense } from "react";
+import { LoginForm } from "@/components/layout/login-form";
+
+export const metadata = { title: "Sign in · Rapport" };
+
+export default function LoginPage() {
+  return (
+    <div className="flex min-h-screen">
+      {/* editorial panel, hidden on small screens */}
+      <div className="hidden lg:flex w-1/2 flex-col justify-between bg-sidebar p-12">
+        <span className="font-display text-3xl text-white">Rapport</span>
+        <div className="max-w-md">
+          <p className="font-display text-4xl leading-tight text-white">
+            Walk out of the meeting. Keep the relationship.
+          </p>
+          <p className="mt-6 text-sm leading-relaxed text-sidebar-foreground/80">
+            Upload the recording and get the report, the follow-ups and what
+            you should remember about the people in the room. Everything stays
+            a private draft until you approve it.
+          </p>
+        </div>
+        <p className="text-xs text-sidebar-foreground/60">
+          Private by default. Nothing is sent to anyone without your click.
+        </p>
+      </div>
+
+      <div className="flex w-full lg:w-1/2 items-center justify-center p-6">
+        <Suspense>
+          <LoginForm />
+        </Suspense>
+      </div>
+    </div>
+  );
+}

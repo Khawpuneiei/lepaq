@@ -1,26 +1,291 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------
+   Rapport design tokens  (MVP_BUILD_SPEC section 8.4)
+
+   Two rules the palette depends on, both easy to break by accident:
+
+   1. `--accent` is the shadcn *hover* colour: menu items, command
+      rows, ghost buttons. It stays neutral slate. The butter yellow
+      lives in `--butter` and is spent only on the coach, review
+      prompts, low-confidence markers and "Remember this" (spec 8.2
+      rule 3). If yellow starts appearing on dropdown hovers, someone
+      has wired `--butter` into `--accent`.
+
+   2. `--success` (#10B981) is 2.5:1 against white and fails AA, so it
+      is only ever a dot, bar, icon or chip fill. Filled buttons with
+      white text use `--success-solid` (#047857).
+   ------------------------------------------------------------------ */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+  --font-heading: var(--font-display);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* semantic colours the base palette lacks */
+  --color-success: var(--success);
+  --color-success-solid: var(--success-solid);
+  --color-success-solid-hover: var(--success-solid-hover);
+  --color-success-soft: var(--success-soft);
+  --color-on-success-soft: var(--on-success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-on-danger-soft: var(--on-danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-on-info-soft: var(--on-info-soft);
+
+  /* butter yellow: coach and attention only */
+  --color-butter: var(--butter);
+  --color-butter-soft: var(--butter-soft);
+  --color-butter-strong: var(--butter-strong);
+  --color-on-butter: var(--on-butter);
+
+  /* sentiment */
+  --color-sentiment-positive: var(--sentiment-positive);
+  --color-sentiment-neutral: var(--sentiment-neutral);
+  --color-sentiment-mixed: var(--sentiment-mixed);
+  --color-sentiment-negative: var(--sentiment-negative);
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.33);
+  --radius-2xl: calc(var(--radius) * 1.66);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 2.5);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  --radius: 12px;
+
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  --primary: #1e3a8a;
+  --primary-foreground: #ffffff;
+  --primary-hover: #1e40af;
+  --primary-pressed: #172554;
+
+  --secondary: #f1f5f9;
+  --secondary-foreground: #1e293b;
+
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+
+  /* neutral hover surface — see rule 1 above */
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #1e3a8a;
+
+  --success: #10b981;
+  --success-solid: #047857;
+  --success-solid-hover: #065f46;
+  --success-soft: #d1fae5;
+  --on-success-soft: #065f46;
+
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --on-danger-soft: #991b1b;
+
+  --info: #0ea5e9;
+  --info-soft: #e0f2fe;
+  --on-info-soft: #075985;
+
+  --butter: #f5e6a3;
+  --butter-soft: #fdf8e7;
+  --butter-strong: #e8d48b;
+  --on-butter: #713f12;
+
+  --sentiment-positive: #10b981;
+  --sentiment-neutral: #64748b;
+  --sentiment-mixed: #e8d48b;
+  --sentiment-negative: #f97316;
+
+  --chart-1: #1e3a8a;
+  --chart-2: #10b981;
+  --chart-3: #0ea5e9;
+  --chart-4: #e8d48b;
+  --chart-5: #f97316;
+
+  --sidebar: #1e3a8a;
+  --sidebar-foreground: #dbe3f4;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #1e3a8a;
+  --sidebar-accent: rgb(255 255 255 / 0.12);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 0.14);
+  --sidebar-ring: #93c5fd;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.06);
+}
+
+.dark {
+  --background: #0f172a;
+  --foreground: #f1f5f9;
+  --card: #1e293b;
+  --card-foreground: #f1f5f9;
+  --popover: #1e293b;
+  --popover-foreground: #f1f5f9;
+
+  /* #1E3A8A disappears against #0F172A, so interactive indigo lifts to blue-500 */
+  --primary: #3b82f6;
+  --primary-foreground: #0b1220;
+  --primary-hover: #60a5fa;
+  --primary-pressed: #2563eb;
+
+  --secondary: #334155;
+  --secondary-foreground: #f1f5f9;
+
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+
+  --accent: #334155;
+  --accent-foreground: #f1f5f9;
+
+  --destructive: #f87171;
+  --destructive-foreground: #0b1220;
+
+  --border: #334155;
+  --input: #3f4d63;
+  --ring: #3b82f6;
+
+  --success: #34d399;
+  --success-solid: #059669;
+  --success-solid-hover: #047857;
+  --success-soft: rgb(16 185 129 / 0.16);
+  --on-success-soft: #6ee7b7;
+
+  --danger: #f87171;
+  --danger-soft: rgb(248 113 113 / 0.16);
+  --on-danger-soft: #fca5a5;
+
+  --info: #38bdf8;
+  --info-soft: rgb(56 189 248 / 0.16);
+  --on-info-soft: #7dd3fc;
+
+  --butter: rgb(253 230 138 / 0.12);
+  --butter-soft: rgb(253 230 138 / 0.07);
+  --butter-strong: #fde68a;
+  --on-butter: #fde68a;
+
+  --sentiment-positive: #34d399;
+  --sentiment-neutral: #94a3b8;
+  --sentiment-mixed: #fde68a;
+  --sentiment-negative: #fb923c;
+
+  --chart-1: #60a5fa;
+  --chart-2: #34d399;
+  --chart-3: #38bdf8;
+  --chart-4: #fde68a;
+  --chart-5: #fb923c;
+
+  /* the deep indigo survives here only as a sidebar tint */
+  --sidebar: #172554;
+  --sidebar-foreground: #cbd5e1;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #172554;
+  --sidebar-accent: rgb(255 255 255 / 0.1);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 0.1);
+  --sidebar-ring: #60a5fa;
+
+  --shadow-card: none;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* one soft shadow level, spec 8.2 rule 4 */
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  /* generous line height for summaries and transcripts */
+  .report-prose {
+    line-height: 1.65;
+  }
+  .report-prose p + p {
+    margin-top: 0.75rem;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* spec 8.2 rule 4: motion is a 150ms fade/slide and nothing more */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
