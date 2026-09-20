@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { SpeakerReview, type SpeakerRow } from "@/components/meeting/speaker-review";
 import { isMajorLabel } from "@/lib/ai/mapSpeakers";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllSegments } from "@/lib/supabase/paginate";
 
 export const metadata = { title: "Speakers · Rapport" };
 
@@ -27,7 +28,7 @@ export default async function SpeakersPage({ params }: PageProps<"/meetings/[id]
     redirect(`/meetings/${id}`);
   }
 
-  const [{ data: mappings }, { data: participants }, { data: segments }] =
+  const [{ data: mappings }, { data: participants }, segments] =
     await Promise.all([
       supabase
         .from("speaker_mappings")
@@ -38,10 +39,14 @@ export default async function SpeakersPage({ params }: PageProps<"/meetings/[id]
         .from("meeting_participants")
         .select("id, display_name, position, is_me")
         .eq("meeting_id", id),
-      supabase
-        .from("transcript_segments")
-        .select("raw_speaker_label, chunk_index, start_sec, end_sec")
-        .eq("meeting_id", id),
+      // paged: the per-label second counts drive the major/minor split, so a
+      // truncated read would misclassify the voices near the end of a long call
+      fetchAllSegments<{
+        raw_speaker_label: string;
+        chunk_index: number;
+        start_sec: number | null;
+        end_sec: number | null;
+      }>(supabase, id, "raw_speaker_label, chunk_index, start_sec, end_sec"),
     ]);
 
   if (!mappings || mappings.length === 0) {
@@ -51,7 +56,7 @@ export default async function SpeakersPage({ params }: PageProps<"/meetings/[id]
   // Seconds per label, so the review list leads with the voices that matter.
   const seconds = new Map<string, number>();
   const chunkOf = new Map<string, number>();
-  for (const s of segments ?? []) {
+  for (const s of segments) {
     const d = Math.max(0, Number(s.end_sec ?? 0) - Number(s.start_sec ?? 0));
     seconds.set(s.raw_speaker_label, (seconds.get(s.raw_speaker_label) ?? 0) + d);
     if (!chunkOf.has(s.raw_speaker_label)) {
@@ -59,7 +64,7 @@ export default async function SpeakersPage({ params }: PageProps<"/meetings/[id]
     }
   }
 
-  const chunked = new Set((segments ?? []).map((s) => s.chunk_index)).size > 1;
+  const chunked = new Set(segments.map((s) => s.chunk_index)).size > 1;
 
   // major/minor is derived here rather than stored, so the threshold can be
   // tuned in one place without a migration

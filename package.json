@@ -12,7 +12,8 @@
     "check:audio": "tsx --conditions=react-server scripts/check-audio.ts",
     "preflight": "tsx --conditions=react-server scripts/preflight.ts",
     "bootstrap": "tsx --conditions=react-server scripts/bootstrap.ts",
-    "try": "tsx --conditions=react-server scripts/try-pipeline.ts"
+    "try": "tsx --conditions=react-server scripts/try-pipeline.ts",
+    "e2e": "tsx --conditions=react-server scripts/e2e.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

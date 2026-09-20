@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/api";
 import { analyzeMeeting } from "@/lib/ai/analyze";
 import { computeTalkRatio } from "@/lib/talkRatio";
+import { fetchAllSegments } from "@/lib/supabase/paginate";
 
 /**
  * Everything that happens after the user has confirmed who is who.
@@ -33,27 +34,31 @@ export async function runAnalysis(
 
   if (!meeting) throw new ApiError("Meeting not found.", 404);
 
-  const [{ data: participants }, { data: segments }, { data: statuses }] =
-    await Promise.all([
-      admin
-        .from("meeting_participants")
-        .select("id, person_id, display_name, position, is_me, speaker_label")
-        .eq("meeting_id", meetingId),
-      admin
-        .from("transcript_segments")
-        .select("idx, speaker_label, start_sec, end_sec, text, excluded")
-        .eq("meeting_id", meetingId)
-        .order("idx", { ascending: true }),
-      admin
-        .from("status_options")
-        .select("label, sort_order")
-        .eq("owner_id", userId)
-        .eq("applies_to", "company")
-        .order("sort_order", { ascending: true }),
-    ]);
+  const [{ data: participants }, segments, { data: statuses }] = await Promise.all([
+    admin
+      .from("meeting_participants")
+      .select("id, person_id, display_name, position, is_me, speaker_label")
+      .eq("meeting_id", meetingId),
+    // paged: a plain select stops at 1000 and would feed the model a
+    // transcript that ends mid-conversation
+    fetchAllSegments<{
+      idx: number;
+      speaker_label: string;
+      start_sec: number | null;
+      end_sec: number | null;
+      text: string;
+      excluded: boolean;
+    }>(admin, meetingId, "idx, speaker_label, start_sec, end_sec, text, excluded"),
+    admin
+      .from("status_options")
+      .select("label, sort_order")
+      .eq("owner_id", userId)
+      .eq("applies_to", "company")
+      .order("sort_order", { ascending: true }),
+  ]);
 
   const parts = participants ?? [];
-  const allSegments = segments ?? [];
+  const allSegments = segments;
   // a segment the user struck is gone from the analysis as well as the ratio
   const usable = allSegments.filter((s) => !s.excluded);
 
