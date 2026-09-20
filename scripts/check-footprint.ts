@@ -13,7 +13,6 @@ import { createClient } from "@supabase/supabase-js";
 
 const bytes = (v: unknown) => Buffer.byteLength(JSON.stringify(v ?? null), "utf8");
 const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`;
-const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 async function main() {
   const db = createClient(
