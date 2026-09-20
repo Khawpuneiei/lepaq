@@ -1,7 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
-import type { LucideIcon } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -12,13 +12,19 @@ import { cn } from "@/lib/utils";
  * "what do I owe people", not on money.
  *
  * The sparkline is borrowed from the dark reference design.
+ *
+ * `icon` is a rendered element, not a component. This is a Client Component
+ * and the dashboard that uses it is a Server Component, and a function cannot
+ * cross that boundary — passing `icon={Mic}` server-renders fine and then
+ * throws on hydration, which is a particularly annoying failure to chase
+ * because the HTML looks correct. An already-rendered element serialises.
  */
 export function StatCard({
   label,
   value,
   hint,
   hintTone = "muted",
-  icon: Icon,
+  icon,
   series,
   accent = "primary",
 }: {
@@ -26,7 +32,7 @@ export function StatCard({
   value: string | number;
   hint?: string;
   hintTone?: "muted" | "warn" | "danger" | "success";
-  icon?: LucideIcon;
+  icon?: ReactNode;
   series?: number[];
   accent?: "primary" | "success" | "butter";
 }) {
@@ -44,7 +50,11 @@ export function StatCard({
     <Card className="relative overflow-hidden p-5 shadow-card">
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">{label}</p>
-        {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />}
+        {icon && (
+          <span className="shrink-0 text-muted-foreground" aria-hidden>
+            {icon}
+          </span>
+        )}
       </div>
 
       {/* big numbers get the serif too */}

@@ -178,7 +178,11 @@ export function PipelineBoard({
   }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+    // The explicit id is load-bearing. dnd-kit derives its aria-describedby
+    // ids from a module-level counter, which starts fresh on the server and
+    // again on the client, so every draggable hydrates with a mismatched
+    // attribute. A stable id makes them deterministic.
+    <DndContext id="pipeline-board" sensors={sensors} onDragEnd={onDragEnd}>
       <div className="flex gap-3 overflow-x-auto pb-2">
         {statuses.map((s) => (
           <Column key={s.id} status={s} companies={byStatus.get(s.id) ?? []} />

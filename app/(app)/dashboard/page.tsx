@@ -184,13 +184,13 @@ export default async function DashboardPage() {
         <StatCard
           label="Meetings captured this week"
           value={capturedThisWeek}
-          icon={Mic}
+          icon={<Mic className="size-4" />}
           series={capturedSeries}
         />
         <StatCard
           label="Follow-ups due"
           value={open.length}
-          icon={ListChecks}
+          icon={<ListChecks className="size-4" />}
           accent={overdue > 0 ? "butter" : "primary"}
           hint={overdue > 0 ? `${pluralise(overdue, "overdue item")}` : "Nothing overdue"}
           hintTone={overdue > 0 ? "warn" : "muted"}
@@ -198,14 +198,14 @@ export default async function DashboardPage() {
         <StatCard
           label="Hours of note-taking saved"
           value={hoursSaved.toFixed(1)}
-          icon={Clock}
+          icon={<Clock className="size-4" />}
           accent="success"
           hint={`Estimate: ${MINUTES_SAVED_PER_MEETING} min per processed meeting`}
         />
         <StatCard
           label="Relationships warming"
           value={warming}
-          icon={HeartHandshake}
+          icon={<HeartHandshake className="size-4" />}
           accent="success"
           hint="People who sounded better than last time"
         />
