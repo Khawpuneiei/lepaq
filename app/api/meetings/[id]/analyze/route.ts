@@ -76,6 +76,22 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
     }
 
     const result = await runAnalysis(admin, id, user.id);
+
+    // Each chunk kept its own copy of its segments so a run that hit the
+    // function ceiling could resume without re-paying OpenAI. That copy has
+    // done its job: the transcript is in transcript_segments, the speakers are
+    // confirmed, and /process refuses to run again once a meeting reaches
+    // 'review'. Keeping it would leave a duplicate transcript in the database
+    // forever — about 35% of everything a meeting stores.
+    //
+    // The rows stay, so chunk_index/status/timing history is still there. Only
+    // the redundant payload goes.
+    await admin
+      .from("transcription_chunks")
+      .update({ segments: [] })
+      .eq("meeting_id", id)
+      .eq("status", "done");
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     await admin
