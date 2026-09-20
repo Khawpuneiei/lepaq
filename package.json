@@ -13,7 +13,8 @@
     "preflight": "tsx --conditions=react-server scripts/preflight.ts",
     "bootstrap": "tsx --conditions=react-server scripts/bootstrap.ts",
     "try": "tsx --conditions=react-server scripts/try-pipeline.ts",
-    "e2e": "tsx --conditions=react-server scripts/e2e.ts"
+    "e2e": "tsx --conditions=react-server scripts/e2e.ts",
+    "check:pages": "tsx --conditions=react-server scripts/check-pages.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
