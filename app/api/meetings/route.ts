@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiError, apiError, requireUser } from "@/lib/api";
 import { createClient } from "@/lib/supabase/server";
 import { AUDIO_BUCKET, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/constants";
+import { findOrCreateCompany } from "@/lib/people";
 
 const Body = z.object({
   title: z.string().min(1, "Give the meeting a title."),
@@ -62,16 +63,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // create the company inline if the user typed a new name in the combobox
+    // Reuse the company if the typed name already exists, rather than adding
+    // a second "Acme" every time somebody types it into the combobox.
     let companyId = body.company_id ?? null;
     if (!companyId && body.new_company_name) {
-      const { data: company, error } = await supabase
-        .from("companies")
-        .insert({ owner_id: user.id, name: body.new_company_name })
-        .select("id")
-        .single();
-      if (error) throw new ApiError(error.message, 500);
-      companyId = company.id;
+      companyId = await findOrCreateCompany(supabase, {
+        ownerId: user.id,
+        name: body.new_company_name,
+      });
     }
 
     const { data: meeting, error: meetingError } = await supabase

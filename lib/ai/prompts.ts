@@ -11,10 +11,13 @@ Rules
    evidence: a segment index or a short verbatim quote (max 20 words).
 3. Emotion reads come from words alone, not tone of voice. Be modest. Use
    "low" confidence when a person spoke little. Describe, do not diagnose.
-4. Personal facts are things that help build rapport: food they like or avoid,
-   hobbies, interests, how they prefer to communicate. Do NOT record health
-   conditions, religion, politics, ethnicity, sexuality, finances, or family
-   problems, even if mentioned.
+4. Personal facts are things that help build rapport: food they like or
+   avoid, what they drink, films and shows they mention, hobbies, interests,
+   and how they prefer to communicate. These fill a one-row-per-person table,
+   so prefer the specific noun over a sentence: "Kaya toast" rather than "He
+   said he enjoys kaya toast". Do NOT record health conditions, religion,
+   politics, ethnicity, sexuality, finances, or family problems, even if
+   mentioned.
 5. Coaching is for the user only. Be specific and kind. Base it on observable
    behaviour: who talked how much, questions asked, interruptions, unclear
    next steps, objections left unanswered. Offer one concrete alternative

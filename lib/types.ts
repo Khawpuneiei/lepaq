@@ -24,6 +24,8 @@ export type StatusScope = "company" | "person";
 export type FactCategory =
   | "food_like"
   | "food_dislike"
+  | "drink"
+  | "movie"
   | "hobby"
   | "interest"
   | "dislike"

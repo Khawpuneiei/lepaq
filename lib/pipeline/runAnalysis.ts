@@ -6,6 +6,7 @@ import { ApiError } from "@/lib/api";
 import { analyzeMeeting } from "@/lib/ai/analyze";
 import { computeTalkRatio } from "@/lib/talkRatio";
 import { fetchAllSegments } from "@/lib/supabase/paginate";
+import { findOrCreatePerson } from "@/lib/people";
 
 /**
  * Everything that happens after the user has confirmed who is who.
@@ -137,28 +138,28 @@ export async function runAnalysis(
     })),
   });
 
-  // ---- create any people the form named but the CRM does not have yet -----
+  // ---- link participants to the people they already are --------------------
+  // findOrCreatePerson, not insert: a second meeting with the same person must
+  // land on the same profile, otherwise everything learned about them ends up
+  // split across a row per meeting.
   const participantByName = new Map(parts.map((p) => [p.display_name, p]));
 
   for (const p of parts) {
     if (p.person_id || p.is_me) continue;
-    const { data: person } = await admin
-      .from("people")
-      .insert({
-        owner_id: userId,
-        company_id: meeting.company_id,
-        full_name: p.display_name,
-        position: p.position,
-      })
-      .select("id")
-      .single();
 
-    if (person) {
+    const personId = await findOrCreatePerson(admin, {
+      ownerId: userId,
+      fullName: p.display_name,
+      companyId: meeting.company_id,
+      position: p.position,
+    });
+
+    if (personId) {
       await admin
         .from("meeting_participants")
-        .update({ person_id: person.id })
+        .update({ person_id: personId })
         .eq("id", p.id);
-      p.person_id = person.id;
+      p.person_id = personId;
     }
   }
 
@@ -248,8 +249,24 @@ export async function runAnalysis(
     }
   }
 
-  if (reads.length) await admin.from("participant_reads").insert(reads);
-  if (facts.length) await admin.from("person_facts").insert(facts);
+  // These two inserts used to swallow their errors, which meant a category the
+  // database has not been taught yet (a migration not run) looked exactly like
+  // a meeting where nobody mentioned anything personal. Fail loudly instead.
+  if (reads.length) {
+    const { error } = await admin.from("participant_reads").insert(reads);
+    if (error) throw new ApiError(`Could not save the people read: ${error.message}`, 500);
+  }
+  if (facts.length) {
+    const { error } = await admin.from("person_facts").insert(facts);
+    if (error) {
+      throw new ApiError(
+        error.message.includes("person_facts_category_check")
+          ? "The database does not know one of the fact categories yet. Run supabase/migrations/0002_people_and_interests.sql in the SQL editor."
+          : `Could not save personal facts: ${error.message}`,
+        500,
+      );
+    }
+  }
 
   // The company status is never changed here. The suggestion is stored and
   // the meeting page offers an Apply button (spec 5.4 and acceptance criteria).

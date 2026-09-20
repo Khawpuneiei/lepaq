@@ -77,6 +77,8 @@ export const SENTIMENT_SCORE: Record<Sentiment, number> = {
 export const FACT_CATEGORY_LABEL: Record<FactCategory, string> = {
   food_like: "Food they like",
   food_dislike: "Food they avoid",
+  drink: "Drink",
+  movie: "Film or show",
   hobby: "Hobby",
   interest: "Interest",
   dislike: "Dislikes",
@@ -84,6 +86,38 @@ export const FACT_CATEGORY_LABEL: Record<FactCategory, string> = {
   personal: "Personal",
   other: "Other",
 };
+
+/**
+ * The columns of the Table of Interest — one row per person, one column per
+ * kind of thing worth remembering before you see them again.
+ *
+ * A column can draw on more than one category: "Favourite food" shows what
+ * they like, and falls back to what they avoid, because "no spicy food" is
+ * just as useful as "loves laksa" when you are booking lunch.
+ *
+ * Anything not claimed by a column lands in Notes, so adding a category never
+ * makes a fact invisible.
+ */
+export const INTEREST_COLUMNS: {
+  key: string;
+  label: string;
+  icon: "utensils" | "clapperboard" | "palette" | "coffee";
+  categories: FactCategory[];
+}[] = [
+  { key: "food", label: "Favourite food", icon: "utensils", categories: ["food_like", "food_dislike"] },
+  { key: "movie", label: "Favourite film", icon: "clapperboard", categories: ["movie"] },
+  { key: "hobby", label: "Hobby", icon: "palette", categories: ["hobby"] },
+  { key: "drink", label: "Favourite drink", icon: "coffee", categories: ["drink"] },
+];
+
+/** Everything the columns above do not claim. */
+export const INTEREST_NOTE_CATEGORIES: FactCategory[] = [
+  "interest",
+  "dislike",
+  "communication_style",
+  "personal",
+  "other",
+];
 
 /** Grouping used by the "Remember this" card on a person profile. */
 export const FACT_GROUPS: {
@@ -94,9 +128,15 @@ export const FACT_GROUPS: {
 }[] = [
   {
     key: "food",
-    label: "Food",
+    label: "Food and drink",
     icon: "utensils",
-    categories: ["food_like", "food_dislike"],
+    categories: ["food_like", "food_dislike", "drink"],
+  },
+  {
+    key: "watching",
+    label: "Films and shows",
+    icon: "clapperboard",
+    categories: ["movie"],
   },
   {
     key: "interests",

@@ -21,6 +21,8 @@ export const CONFIDENCES = ["low", "medium", "high"] as const;
 export const FACT_CATEGORIES = [
   "food_like",
   "food_dislike",
+  "drink",
+  "movie",
   "hobby",
   "interest",
   "dislike",
