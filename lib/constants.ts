@@ -1,4 +1,4 @@
-import type { FactCategory, Sentiment } from "@/lib/types";
+import type { Sentiment } from "@/lib/types";
 
 export const AUDIO_BUCKET = "meeting-audio";
 
@@ -74,7 +74,12 @@ export const SENTIMENT_SCORE: Record<Sentiment, number> = {
   positive: 4,
 };
 
-export const FACT_CATEGORY_LABEL: Record<FactCategory, string> = {
+/**
+ * Labels for the categories that ship with the app. A category the model
+ * proposed will not be in here, so always go through `factCategoryLabel`,
+ * which falls back to humanising the key.
+ */
+export const FACT_CATEGORY_LABEL: Record<string, string> = {
   food_like: "Food they like",
   food_dislike: "Food they avoid",
   drink: "Drink",
@@ -87,71 +92,59 @@ export const FACT_CATEGORY_LABEL: Record<FactCategory, string> = {
   other: "Other",
 };
 
+/** "sport" -> "Sport", "board_games" -> "Board games". */
+export function factCategoryLabel(key: string) {
+  if (FACT_CATEGORY_LABEL[key]) return FACT_CATEGORY_LABEL[key];
+  const words = key.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /**
- * The columns of the Table of Interest — one row per person, one column per
- * kind of thing worth remembering before you see them again.
+ * Categories the model must never return, enforced in code as well as in the
+ * prompt and the database check constraint.
  *
- * A column can draw on more than one category: "Favourite food" shows what
- * they like, and falls back to what they avoid, because "no spicy food" is
- * just as useful as "loves laksa" when you are booking lunch.
- *
- * Anything not claimed by a column lands in Notes, so adding a category never
- * makes a fact invisible.
+ * Spec 9 rule 4 keeps these out of the product. An open category vocabulary
+ * is exactly where that rule could quietly erode — "health" is a plausible
+ * thing for a model to volunteer after somebody mentions a marathon — so the
+ * list is checked on the way in rather than trusted to the prompt.
  */
-export const INTEREST_COLUMNS: {
-  key: string;
-  label: string;
-  icon: "utensils" | "clapperboard" | "palette" | "coffee";
-  categories: FactCategory[];
-}[] = [
+export const BLOCKED_FACT_CATEGORIES = new Set([
+  "health", "medical", "illness", "religion", "religious", "politics",
+  "political", "ethnicity", "race", "sexuality", "sexual_orientation",
+  "finances", "financial", "salary", "income", "family_problems", "divorce",
+]);
+
+/** Shape the model returns into something storable, or reject it. */
+export function normaliseFactCategory(raw: string): string | null {
+  const key = raw.trim().toLowerCase().replace(/[\s-]+/g, "_").replace(/[^a-z0-9_]/g, "");
+  if (!key || !/^[a-z][a-z0-9_]{0,38}$/.test(key)) return null;
+  if (BLOCKED_FACT_CATEGORIES.has(key)) return null;
+  return key;
+}
+
+/**
+ * Only used when a user has no interest_columns rows yet — normally they come
+ * from the database, because the whole point is that the user owns them.
+ */
+export const DEFAULT_INTEREST_COLUMNS = [
   { key: "food", label: "Favourite food", icon: "utensils", categories: ["food_like", "food_dislike"] },
   { key: "movie", label: "Favourite film", icon: "clapperboard", categories: ["movie"] },
   { key: "hobby", label: "Hobby", icon: "palette", categories: ["hobby"] },
   { key: "drink", label: "Favourite drink", icon: "coffee", categories: ["drink"] },
 ];
 
-/** Everything the columns above do not claim. */
-export const INTEREST_NOTE_CATEGORIES: FactCategory[] = [
+/**
+ * Categories that stay in Notes rather than becoming a suggested column.
+ * These are genuinely miscellaneous, so offering "add Other as a column"
+ * would be noise.
+ */
+export const NEVER_SUGGEST_AS_COLUMN = new Set([
+  "other",
+  "personal",
   "interest",
   "dislike",
   "communication_style",
-  "personal",
-  "other",
-];
-
-/** Grouping used by the "Remember this" card on a person profile. */
-export const FACT_GROUPS: {
-  key: string;
-  label: string;
-  icon: string;
-  categories: FactCategory[];
-}[] = [
-  {
-    key: "food",
-    label: "Food and drink",
-    icon: "utensils",
-    categories: ["food_like", "food_dislike", "drink"],
-  },
-  {
-    key: "watching",
-    label: "Films and shows",
-    icon: "clapperboard",
-    categories: ["movie"],
-  },
-  {
-    key: "interests",
-    label: "Interests",
-    icon: "heart",
-    categories: ["hobby", "interest"],
-  },
-  {
-    key: "style",
-    label: "Working with them",
-    icon: "message-circle",
-    categories: ["communication_style", "dislike"],
-  },
-  { key: "personal", label: "Personal", icon: "user", categories: ["personal", "other"] },
-];
+]);
 
 export const MEETING_STATUS_LABEL: Record<string, string> = {
   uploaded: "Uploaded",

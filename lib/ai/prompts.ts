@@ -11,13 +11,18 @@ Rules
    evidence: a segment index or a short verbatim quote (max 20 words).
 3. Emotion reads come from words alone, not tone of voice. Be modest. Use
    "low" confidence when a person spoke little. Describe, do not diagnose.
-4. Personal facts are things that help build rapport: food they like or
-   avoid, what they drink, films and shows they mention, hobbies, interests,
-   and how they prefer to communicate. These fill a one-row-per-person table,
-   so prefer the specific noun over a sentence: "Kaya toast" rather than "He
-   said he enjoys kaya toast". Do NOT record health conditions, religion,
-   politics, ethnicity, sexuality, finances, or family problems, even if
-   mentioned.
+4. Personal facts are things that help build rapport. They fill a
+   one-row-per-person table, so return the specific noun, not a sentence:
+   "Kaya toast", not "He said he enjoys kaya toast".
+   The user message lists the category keys this user already has a column
+   for. Use one of those whenever the fact fits. When something genuinely does
+   not fit — they spent ten minutes on their football team and there is no
+   sport column — coin a short new snake_case key for it, like "sport" or
+   "travel". Do not coin a key for a one-off aside; a new key should be
+   something worth a column of its own.
+   Do NOT record health conditions, religion, politics, ethnicity, sexuality,
+   finances, or family problems, in any category, under any key, even if
+   mentioned. Do not work around this by inventing a euphemistic key.
 5. Coaching is for the user only. Be specific and kind. Base it on observable
    behaviour: who talked how much, questions asked, interruptions, unclear
    next steps, objections left unanswered. Offer one concrete alternative
@@ -138,6 +143,8 @@ export function buildAnalysisUserMessage(args: {
   companyName: string | null;
   currentCompanyStatus: string | null;
   allowedStatuses: string[];
+  /** Category keys this user has a Table of Interest column for. */
+  interestKeys: { key: string; label: string }[];
   knownFacts: { person: string; category: string; fact: string }[];
   talkRatio: TalkRatioRow[];
   transcript: AnalysisTranscriptLine[];
@@ -167,6 +174,19 @@ export function buildAnalysisUserMessage(args: {
       args.allowedStatuses.length ? args.allowedStatuses.join(", ") : "none defined"
     }`,
   );
+
+  if (args.interestKeys.length) {
+    lines.push(
+      "",
+      "Category keys this user already has a column for — prefer these:",
+    );
+    for (const k of args.interestKeys) {
+      lines.push(`- ${k.key} (${k.label})`);
+    }
+    lines.push(
+      "If a fact does not fit any of them, coin a short new snake_case key.",
+    );
+  }
 
   if (args.knownFacts.length) {
     lines.push(

@@ -18,6 +18,13 @@ import { z } from "zod";
 
 export const SENTIMENTS = ["positive", "neutral", "mixed", "negative"] as const;
 export const CONFIDENCES = ["low", "medium", "high"] as const;
+/**
+ * The categories that ship with the app. NOT an enum in the JSON schema any
+ * more: the user owns their Table of Interest columns, so the model has to be
+ * able to return a key nobody thought of in advance. The per-meeting user
+ * message lists the columns this user actually has, and normaliseFactCategory
+ * plus the database check constraint police what comes back.
+ */
 export const FACT_CATEGORIES = [
   "food_like",
   "food_dislike",
@@ -126,7 +133,7 @@ export const Analysis = z.object({
       confidence: z.enum(CONFIDENCES),
       facts: z.array(
         z.object({
-          category: z.enum(FACT_CATEGORIES),
+          category: z.string(),
           fact: z.string(),
           evidence_quote: z.string(),
         }),
@@ -248,7 +255,11 @@ export const ANALYSIS_JSON_SCHEMA = {
               type: "object",
               additionalProperties: false,
               properties: {
-                category: { type: "string", enum: FACT_CATEGORIES },
+                category: {
+                  type: "string",
+                  description:
+                    "snake_case key, at most 39 characters. Use one of the keys listed in the user message where it fits; otherwise coin a short new one.",
+                },
                 fact: { type: "string" },
                 evidence_quote: { type: "string" },
               },

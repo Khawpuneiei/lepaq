@@ -14,7 +14,14 @@ import {
 import { StatusSelect } from "@/components/people/status-select";
 import { createClient } from "@/lib/supabase/server";
 import { dueLabel, formatDate } from "@/lib/utils";
-import type { Coach, PersonFact, Sentiment, StatusOption } from "@/lib/types";
+import { fallbackColumns } from "@/lib/interests";
+import type {
+  Coach,
+  InterestColumn,
+  PersonFact,
+  Sentiment,
+  StatusOption,
+} from "@/lib/types";
 
 export default async function PersonPage({ params }: PageProps<"/people/[id]">) {
   const { id } = await params;
@@ -32,8 +39,13 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
 
   if (!person) notFound();
 
-  const [{ data: facts }, { data: reads }, { data: statuses }, { data: openItems }] =
-    await Promise.all([
+  const [
+    { data: facts },
+    { data: reads },
+    { data: statuses },
+    { data: openItems },
+    { data: columnRows },
+  ] = await Promise.all([
       supabase
         .from("person_facts")
         .select("*")
@@ -58,7 +70,16 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
         .eq("approved", true)
         .eq("done", false)
         .order("due_date", { ascending: true }),
+      supabase
+        .from("interest_columns")
+        .select("*")
+        .eq("owner_id", user.id)
+        .order("sort_order", { ascending: true }),
     ]);
+
+  const columns: InterestColumn[] = (columnRows ?? []).length
+    ? (columnRows as unknown as InterestColumn[])
+    : fallbackColumns(user.id);
 
   // Meetings this person was in, newest first.
   const { data: participantRows } = await supabase
@@ -131,6 +152,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
           personId={person.id}
           personName={person.full_name}
           facts={(facts ?? []) as PersonFact[]}
+          columns={columns}
         />
 
         {points.length > 0 && (

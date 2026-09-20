@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
 import { PeopleView, type PersonRow } from "@/components/people/people-view";
 import { createClient } from "@/lib/supabase/server";
-import type { FactCategory, Sentiment } from "@/lib/types";
+import { fallbackColumns } from "@/lib/interests";
+import type { FactCategory, InterestColumn, Sentiment } from "@/lib/types";
 
 export const metadata = { title: "People · Rapport" };
 
@@ -13,6 +14,16 @@ export default async function PeoplePage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const { data: columnRows } = await supabase
+    .from("interest_columns")
+    .select("*")
+    .eq("owner_id", user.id)
+    .order("sort_order", { ascending: true });
+
+  const columns: InterestColumn[] = (columnRows ?? []).length
+    ? (columnRows as InterestColumn[])
+    : fallbackColumns(user.id);
 
   const { data: people } = await supabase
     .from("people")
@@ -120,7 +131,7 @@ export default async function PeoplePage() {
         title="People"
         description="One row per person. Meet someone again and it updates their row rather than adding another."
       />
-      <PeopleView people={rows} />
+      <PeopleView people={rows} columns={columns} ownerId={user.id} />
     </div>
   );
 }

@@ -246,6 +246,13 @@ async function runLlmStages(
       companyName: flag("company") ?? null,
       currentCompanyStatus: null,
       allowedStatuses: ALLOWED_STATUSES,
+      interestKeys: [
+        { key: "food_like", label: "Favourite food" },
+        { key: "food_dislike", label: "Favourite food" },
+        { key: "movie", label: "Favourite film" },
+        { key: "hobby", label: "Hobby" },
+        { key: "drink", label: "Favourite drink" },
+      ],
       participants,
       knownFacts: [],
       talkRatio,

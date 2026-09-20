@@ -1,15 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Heart,
-  MessageCircle,
-  Plus,
-  Sparkles,
-  Trash2,
-  User,
-  Utensils,
-} from "lucide-react";
+import { Plus, Sparkles, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -31,15 +23,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/lib/supabase/client";
-import { FACT_CATEGORY_LABEL, FACT_GROUPS } from "@/lib/constants";
-import type { FactCategory, PersonFact } from "@/lib/types";
-
-const ICONS = {
-  utensils: Utensils,
-  heart: Heart,
-  "message-circle": MessageCircle,
-  user: User,
-} as const;
+import { FACT_CATEGORY_LABEL, factCategoryLabel } from "@/lib/constants";
+import { bucketFacts } from "@/lib/interests";
+import { COLUMN_ICONS } from "@/components/people/table-of-interest";
+import type { FactCategory, InterestColumn, PersonFact } from "@/lib/types";
 
 /**
  * The thing users open two minutes before a call, so it is the first card on
@@ -50,10 +37,13 @@ export function RememberThisCard({
   personId,
   personName,
   facts: initial,
+  columns,
 }: {
   personId: string;
   personName: string;
   facts: PersonFact[];
+  /** The user's own Table of Interest columns, so both views agree. */
+  columns: InterestColumn[];
 }) {
   const [facts, setFacts] = useState(initial);
   const [open, setOpen] = useState(false);
@@ -105,10 +95,10 @@ export function RememberThisCard({
     }
   }
 
-  const grouped = FACT_GROUPS.map((group) => ({
-    ...group,
-    facts: facts.filter((f) => group.categories.includes(f.category)),
-  })).filter((g) => g.facts.length > 0);
+  // Grouped by the same columns the Table of Interest uses, so a fact never
+  // sits under "Food" in one view and "Notes" in the other.
+  const { buckets, notes } = bucketFacts(facts, columns);
+  const grouped = buckets.filter((b) => b.facts.length > 0);
 
   return (
     <div className="rounded-lg border border-butter-strong bg-butter-soft p-6 dark:bg-butter">
@@ -140,9 +130,16 @@ export function RememberThisCard({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(FACT_CATEGORY_LABEL).map(([key, label]) => (
+                    {Array.from(
+                      new Set([
+                        ...columns.flatMap((c) =>
+                          c.categories?.length ? c.categories : [c.key],
+                        ),
+                        ...Object.keys(FACT_CATEGORY_LABEL),
+                      ]),
+                    ).map((key) => (
                       <SelectItem key={key} value={key}>
-                        {label}
+                        {factCategoryLabel(key)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -173,8 +170,18 @@ export function RememberThisCard({
         </p>
       ) : (
         <div className="mt-5 space-y-5">
-          {grouped.map((group) => {
-            const Icon = ICONS[group.icon as keyof typeof ICONS] ?? User;
+          {[
+            ...grouped.map((b) => ({
+              key: b.column.id,
+              label: b.column.label,
+              icon: b.column.icon,
+              facts: b.facts,
+            })),
+            ...(notes.length
+              ? [{ key: "__notes", label: "Other notes", icon: "sparkles", facts: notes }]
+              : []),
+          ].map((group) => {
+            const Icon = COLUMN_ICONS[group.icon] ?? User;
             return (
               <section key={group.key}>
                 <h3 className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-on-butter/70">

@@ -14,7 +14,7 @@ import {
   type InterestFact,
 } from "@/components/people/table-of-interest";
 import { cn, formatDate, initials, pluralise } from "@/lib/utils";
-import type { Sentiment } from "@/lib/types";
+import type { InterestColumn, Sentiment } from "@/lib/types";
 
 export interface PersonRow {
   id: string;
@@ -43,7 +43,15 @@ export interface PersonRow {
  * an average across months would describe a relationship that no longer
  * exists.
  */
-export function PeopleView({ people }: { people: PersonRow[] }) {
+export function PeopleView({
+  people,
+  columns,
+  ownerId,
+}: {
+  people: PersonRow[];
+  columns: InterestColumn[];
+  ownerId: string;
+}) {
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
 
@@ -121,7 +129,7 @@ export function PeopleView({ people }: { people: PersonRow[] }) {
           Nobody matches &ldquo;{query}&rdquo;.
         </p>
       ) : view === "table" ? (
-        <TableOfInterest rows={filtered} />
+        <TableOfInterest rows={filtered} columns={columns} ownerId={ownerId} />
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           {filtered.map((p) => (

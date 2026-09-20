@@ -35,7 +35,8 @@ export async function runAnalysis(
 
   if (!meeting) throw new ApiError("Meeting not found.", 404);
 
-  const [{ data: participants }, segments, { data: statuses }] = await Promise.all([
+  const [{ data: participants }, segments, { data: statuses }, { data: interestColumns }] =
+    await Promise.all([
     admin
       .from("meeting_participants")
       .select("id, person_id, display_name, position, is_me, speaker_label")
@@ -55,6 +56,13 @@ export async function runAnalysis(
       .select("label, sort_order")
       .eq("owner_id", userId)
       .eq("applies_to", "company")
+      .order("sort_order", { ascending: true }),
+    // the user's Table of Interest columns, so the model prefers keys that
+    // already have somewhere to show rather than coining a synonym
+    admin
+      .from("interest_columns")
+      .select("key, label, categories, sort_order")
+      .eq("owner_id", userId)
       .order("sort_order", { ascending: true }),
   ]);
 
@@ -123,6 +131,13 @@ export async function runAnalysis(
     companyName,
     currentCompanyStatus: currentStatus,
     allowedStatuses: (statuses ?? []).map((s) => s.label),
+    interestKeys: (interestColumns ?? []).flatMap(
+      (c: { key: string; label: string; categories: string[] | null }) =>
+        (c.categories?.length ? c.categories : [c.key]).map((key) => ({
+          key,
+          label: c.label,
+        })),
+    ),
     participants: parts.map((p) => ({
       display_name: p.display_name,
       position: p.position,

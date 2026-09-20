@@ -12,6 +12,7 @@ import {
   type AnalysisTranscriptLine,
   type MappingParticipant,
 } from "@/lib/ai/prompts";
+import { normaliseFactCategory } from "@/lib/constants";
 import type { TalkRatioRow } from "@/lib/types";
 
 export interface AnalyzeArgs {
@@ -22,6 +23,7 @@ export interface AnalyzeArgs {
   companyName: string | null;
   currentCompanyStatus: string | null;
   allowedStatuses: string[];
+  interestKeys: { key: string; label: string }[];
   participants: MappingParticipant[];
   knownFacts: { person: string; category: string; fact: string }[];
   talkRatio: TalkRatioRow[];
@@ -87,7 +89,19 @@ function sanitiseAnalysis(a: Analysis, args: AnalyzeArgs): Analysis {
           ? a.company.suggested_status
           : null,
     },
-    people: a.people.filter((p) => knownNames.has(p.display_name)),
+    people: a.people
+      .filter((p) => knownNames.has(p.display_name))
+      .map((p) => ({
+        ...p,
+        // The category vocabulary is open now, so this is where it is policed:
+        // a malformed key, or one of the sensitive categories spec 9 rule 4
+        // keeps out of the product, is dropped rather than stored. A rule in a
+        // prompt is a request; a filter here is a guarantee.
+        facts: p.facts.flatMap((f) => {
+          const category = normaliseFactCategory(f.category);
+          return category ? [{ ...f, category }] : [];
+        }),
+      })),
   };
 }
 

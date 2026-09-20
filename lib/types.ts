@@ -21,17 +21,29 @@ export type Confidence = "low" | "medium" | "high";
 export type CompanyKind = "prospect" | "client" | "partner" | "internal";
 export type StatusScope = "company" | "person";
 
-export type FactCategory =
-  | "food_like"
-  | "food_dislike"
-  | "drink"
-  | "movie"
-  | "hobby"
-  | "interest"
-  | "dislike"
-  | "communication_style"
-  | "personal"
-  | "other";
+/**
+ * Open vocabulary, not a union.
+ *
+ * The model may propose a category nobody thought of — 'sport', 'travel' —
+ * and the user can promote it to a column on the Table of Interest. The
+ * format and the sensitive-category blocklist are enforced by the check
+ * constraint in 0003 and by sanitiseAnalysis, not by the type system.
+ */
+export type FactCategory = string;
+
+/** A column on the user's Table of Interest. */
+export interface InterestColumn {
+  id: string;
+  owner_id: string;
+  key: string;
+  label: string;
+  icon: string;
+  /** Which fact categories this column displays; usually just [key]. */
+  categories: string[];
+  sort_order: number;
+  is_default: boolean;
+  created_at: string;
+}
 
 export interface Profile {
   id: string;
