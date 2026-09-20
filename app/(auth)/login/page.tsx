@@ -26,7 +26,15 @@ export default function LoginPage() {
 
       <div className="flex w-full lg:w-1/2 items-center justify-center p-6">
         <Suspense>
-          <LoginForm />
+          {/* Same two locks as the route itself, so this cannot render in a
+              production build even if the env var were set by mistake. */}
+          <LoginForm
+            devBypass={
+              process.env.NODE_ENV !== "production" &&
+              process.env.DEV_AUTH_BYPASS === "true"
+            }
+            devEmail={process.env.OWNER_EMAIL ?? null}
+          />
         </Suspense>
       </div>
     </div>

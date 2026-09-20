@@ -10,7 +10,20 @@ import { NextResponse, type NextRequest } from "next/server";
  * login page are the only public routes.
  */
 
-const PUBLIC_PREFIXES = ["/login", "/auth", "/s/"];
+/**
+ * Same two locks as the route and the button. Without this the dev sign-in
+ * cannot work at all: the proxy would bounce the very request that exists to
+ * create a session, straight back to /login.
+ */
+const DEV_LOGIN_ENABLED =
+  process.env.NODE_ENV !== "production" && process.env.DEV_AUTH_BYPASS === "true";
+
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/auth",
+  "/s/",
+  ...(DEV_LOGIN_ENABLED ? ["/api/dev/login"] : []),
+];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some(

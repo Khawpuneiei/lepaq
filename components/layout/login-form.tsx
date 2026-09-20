@@ -13,7 +13,13 @@ import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
 
-export function LoginForm() {
+export function LoginForm({
+  devBypass = false,
+  devEmail = null,
+}: {
+  devBypass?: boolean;
+  devEmail?: string | null;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/dashboard";
@@ -126,6 +132,26 @@ export function LoginForm() {
           {mode === "signin" ? "Sign in" : "Create account"}
         </Button>
       </form>
+
+      {devBypass && (
+        <div className="mt-6 rounded-md border border-dashed border-butter-strong bg-butter-soft p-4 dark:bg-butter">
+          <p className="text-xs font-medium uppercase tracking-wide text-on-butter">
+            Local development only
+          </p>
+          <p className="mt-1 text-sm text-on-butter/90">
+            Skip the password and sign in as {devEmail ?? "the owner account"}.
+          </p>
+          {/* a plain link, not fetch: the route replies with a redirect that
+              carries the Set-Cookie header, and the browser must follow it */}
+          <Button asChild variant="outline" size="sm" className="mt-3">
+            <a href="/api/dev/login">Sign in without a password</a>
+          </Button>
+          <p className="mt-3 text-xs text-on-butter/70">
+            This button and the route behind it do not exist in a production
+            build.
+          </p>
+        </div>
+      )}
 
       <p className="mt-6 text-sm text-muted-foreground">
         {mode === "signin" ? "No account yet?" : "Already have an account?"}{" "}

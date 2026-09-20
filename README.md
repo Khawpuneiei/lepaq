@@ -49,7 +49,29 @@ The SDK types in `node_modules/openai` do confirm the shape of the diarize
 call: `response_format: "diarized_json"`, `chunking_strategy: "auto"`
 (required above 30 seconds), and no `prompt` support.
 
-### 3. Demo data
+### 3. Signing in during development
+
+If the owner account has no password set, or you would rather not type one
+thirty times a day, put this in `.env.local`:
+
+```
+DEV_AUTH_BYPASS=true
+OWNER_EMAIL=you@example.com
+```
+
+The login page then offers **Sign in without a password**, which mints a real
+Supabase session through the admin API and writes the normal session cookie.
+RLS, the proxy guard and every route behave exactly as they do for a real
+user — it is a shortcut past typing a password, not past authentication.
+
+It cannot reach production. The route, the button and the proxy exemption all
+require `NODE_ENV !== "production"`, which `next build` sets. Verified against
+a production build with `DEV_AUTH_BYPASS=true` still set: the button is absent
+from the page, an anonymous request is bounced to `/login`, and an
+*authenticated* request — where the proxy does let it through — gets a 404
+from the route itself.
+
+### 4. Demo data
 
 ```bash
 npm run seed
