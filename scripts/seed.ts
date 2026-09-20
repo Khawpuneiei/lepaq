@@ -63,7 +63,7 @@ async function main() {
     .from("profiles")
     .upsert({ id: userId, full_name: "Sarah Johnson", job_title: "Account Executive" });
 
-  // The handle_new_user trigger seeds statuses; make sure they exist anyway
+  // The rapport_handle_new_user trigger seeds statuses; make sure they exist anyway
   // for a user created before the migration ran.
   const { data: existingStatuses } = await db
     .from("status_options")

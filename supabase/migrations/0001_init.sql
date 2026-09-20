@@ -236,7 +236,13 @@ create index if not exists person_facts_person_idx
 -- New user bootstrap: profile row + the default status lists from spec 4.
 -- Done as a trigger rather than on first login so it cannot be skipped.
 -- ---------------------------------------------------------------------------
-create or replace function public.handle_new_user()
+-- Named with a rapport_ prefix on purpose. `handle_new_user` and
+-- `on_auth_user_created` are the names every Supabase tutorial uses, so a
+-- project that already hosts another app very likely has its own. A bare
+-- `create or replace function public.handle_new_user()` would overwrite that
+-- app's signup hook, and `drop trigger if exists on_auth_user_created` would
+-- delete its trigger — both silently, with no error to notice.
+create or replace function public.rapport_handle_new_user()
 returns trigger
 language plpgsql
 security definer
@@ -266,10 +272,10 @@ begin
   return new;
 end $$;
 
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
+drop trigger if exists on_auth_user_created_rapport on auth.users;
+create trigger on_auth_user_created_rapport
   after insert on auth.users
-  for each row execute function public.handle_new_user();
+  for each row execute function public.rapport_handle_new_user();
 
 -- ---------- RLS: owner-only everywhere ----------
 alter table profiles              enable row level security;

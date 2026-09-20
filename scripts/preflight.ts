@@ -104,7 +104,7 @@ async function main() {
         .eq("id", ownerId)
         .maybeSingle();
       if (profile) ok("profile row", profile.full_name ?? "(no name)");
-      else bad("profile row", "missing — the handle_new_user trigger did not run for this user");
+      else bad("profile row", "missing — the new-user trigger did not run for this user");
 
       const { count } = await db
         .from("status_options")

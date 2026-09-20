@@ -7,7 +7,7 @@
  *     SQL editor does not always have, so it is created through the storage
  *     API here instead.
  *
- *  2. Users who existed BEFORE the migration ran. handle_new_user only fires
+ *  2. Users who existed BEFORE the migration ran. rapport_handle_new_user only fires
  *     on insert into auth.users, so an account created earlier has no profile
  *     row and no status lists — which means the analysis step would have no
  *     allowed status labels to choose from.
