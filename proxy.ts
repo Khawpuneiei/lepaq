@@ -31,7 +31,40 @@ function isPublic(pathname: string) {
   );
 }
 
+/**
+ * The proxy runs before every request, so anything that throws in here takes
+ * down the whole site — including /login, which is where you would go to
+ * work out what is wrong. Passing `process.env.X!` straight into
+ * createServerClient made a missing variable do exactly that: an opaque
+ * "Internal Server Error" on every route, with nothing to indicate that the
+ * cause was configuration rather than code.
+ *
+ * Checked here instead, and answered with a 503 that says what to do.
+ */
+function missingEnv(): string[] {
+  return ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"].filter(
+    (key) => !process.env[key],
+  );
+}
+
 export async function proxy(request: NextRequest) {
+  const missing = missingEnv();
+  if (missing.length > 0) {
+    console.error(
+      `[proxy] missing environment variable(s): ${missing.join(", ")}. ` +
+        "Set them in the deployment's environment settings and redeploy.",
+    );
+    return new NextResponse(
+      `Rapport is not configured.\n\n` +
+        `Missing: ${missing.join(", ")}\n\n` +
+        `Add these in your hosting provider's environment variables, for the\n` +
+        `environment you are deploying to, then REDEPLOY — NEXT_PUBLIC_* values\n` +
+        `are baked in at build time, so adding them without a rebuild changes\n` +
+        `nothing.`,
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
+    );
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -56,9 +89,28 @@ export async function proxy(request: NextRequest) {
   );
 
   // Do not remove: this refreshes an expired token and rewrites the cookie.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  //
+  // Wrapped because this is the single most dangerous await in the codebase.
+  // It runs before every request, and an unhandled throw here — a malformed
+  // SUPABASE_URL, a project that has been paused, a network blip — turns the
+  // entire site into "Internal Server Error" with no clue as to why. Failing
+  // closed with the reason attached is strictly better than failing opaquely.
+  let user = null;
+  try {
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[proxy] could not reach Supabase:", detail);
+    return new NextResponse(
+      `Rapport cannot reach its database.\n\n${detail}\n\n` +
+        `Check NEXT_PUBLIC_SUPABASE_URL is the full https://<ref>.supabase.co\n` +
+        `URL, that the anon key belongs to that same project, and that the\n` +
+        `project is not paused — Supabase pauses free projects after about a\n` +
+        `week of inactivity.`,
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
+    );
+  }
 
   const { pathname } = request.nextUrl;
 
