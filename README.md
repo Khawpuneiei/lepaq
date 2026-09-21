@@ -122,7 +122,22 @@ goes wrong:
   request can outlive that even though the file would have fitted. So audio
   past 25 minutes is split and the parts run concurrently.
 
-`lib/audio/chunk.ts` therefore picks one of three paths:
+**Before any of that, the browser shrinks the file.** A 90-minute recording
+off a phone is 120-130MB and the Supabase free tier refuses a storage object
+over 50MB, so `lib/audio/compress-client.ts` re-encodes it to mono 16kHz
+48kbps MP3 with ffmpeg.wasm before it is uploaded. Measured on the real
+61-minute test recording: **86.3MB down to 21.0MB, 76% smaller**, about 60
+seconds of encoding plus a one-off 32MB core download on first use. That is
+the same encode that already produced 1022 diarized segments and a clean
+analysis, so nothing is lost by it.
+
+The core is served from `/public/ffmpeg` (copied out of node_modules by
+postinstall, gitignored) rather than a CDN, and the single-threaded build is
+used deliberately so no COOP/COEP headers are needed. If it cannot load for
+any reason, the original file is uploaded instead and the old size limit
+applies — compression is an optimisation, never a gate.
+
+Server-side, `lib/audio/chunk.ts` then picks one of three paths:
 
 1. short and small — send the original bytes, ffmpeg never runs;
 2. oversized but under 25 minutes — one re-encoded MP3, still one request;

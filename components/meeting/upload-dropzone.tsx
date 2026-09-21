@@ -1,11 +1,18 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { FileAudio, Trash2, UploadCloud } from "lucide-react";
+import { FileAudio, Loader2, Trash2, UploadCloud, Wand2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/talkRatio";
+import {
+  MAX_SOURCE_BYTES,
+  compressAudio,
+  estimateCompressedBytes,
+  type CompressProgress,
+} from "@/lib/audio/compress-client";
 import {
   ACCEPTED_AUDIO_EXTENSIONS,
   MAX_UPLOAD_BYTES,
@@ -16,11 +23,15 @@ import {
 export interface PickedFile {
   file: File;
   durationSec: number | null;
+  originalBytes: number;
+  compressed: boolean;
 }
 
 function extensionAllowed(name: string) {
   return ACCEPTED_AUDIO_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
 }
+
+const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 
 /** Read duration in the browser so the user sees it before committing. */
 function readDuration(file: File): Promise<number | null> {
@@ -49,6 +60,7 @@ export function UploadDropzone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [working, setWorking] = useState<CompressProgress | null>(null);
 
   const accept = useCallback(
     async (file: File) => {
@@ -61,23 +73,80 @@ export function UploadDropzone({
         return;
       }
 
-      if (file.size > MAX_UPLOAD_BYTES) {
+      if (file.size > MAX_SOURCE_BYTES) {
         setError(
-          `That file is ${(file.size / 1024 / 1024).toFixed(1)}MB and the limit is ${MAX_UPLOAD_MB}MB. Exporting it as mono MP3 at 48-64 kbps usually shrinks it by 5-10x.`,
+          `That file is ${mb(file.size)}, which is too big to process in the browser. Export it as mono MP3 first.`,
         );
         return;
       }
 
-      onChange({ file, durationSec: await readDuration(file) });
+      const durationSec = await readDuration(file);
+
+      // Shrink before upload rather than rejecting. An hour and a half off a
+      // phone is ~130MB, well past the storage limit; the same audio as mono
+      // 48kbps MP3 is ~32MB and transcribes just as well.
+      let result;
+      try {
+        setWorking({ stage: "loading" });
+        result = await compressAudio(file, { onProgress: setWorking });
+      } finally {
+        setWorking(null);
+      }
+
+      if (result.file.size > MAX_UPLOAD_BYTES) {
+        setError(
+          result.skipped
+            ? `That file is ${mb(result.file.size)} and the limit is ${MAX_UPLOAD_MB} MB. Compression was unavailable (${result.reason}), so export it as mono MP3 at 48 kbps and try again.`
+            : `Even compressed that is ${mb(result.file.size)}, over the ${MAX_UPLOAD_MB} MB limit. Try splitting the recording in two.`,
+        );
+        return;
+      }
+
+      onChange({
+        file: result.file,
+        durationSec,
+        originalBytes: result.originalBytes,
+        compressed: !result.skipped,
+      });
     },
     [onChange],
   );
 
+  // ---- working ------------------------------------------------------------
+  if (working) {
+    return (
+      <div className="rounded-lg border bg-card p-6 shadow-card">
+        <div className="flex items-center gap-3">
+          <Loader2 className="size-5 shrink-0 animate-spin text-primary" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">
+              {working.stage === "loading"
+                ? "Getting the compressor ready"
+                : "Shrinking the recording"}
+            </p>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {working.stage === "loading"
+                ? "One-off 32 MB download, cached after this."
+                : "Runs on your machine — the audio has not left your browser yet."}
+            </p>
+          </div>
+          {working.stage === "encoding" && working.ratio !== undefined && (
+            <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+              {Math.round(working.ratio * 100)}%
+            </span>
+          )}
+        </div>
+        {working.stage === "encoding" && (
+          <Progress value={(working.ratio ?? 0) * 100} className="mt-4" />
+        )}
+      </div>
+    );
+  }
+
+  // ---- chosen -------------------------------------------------------------
   if (value) {
-    const mb = value.file.size / 1024 / 1024;
-    // Over 25MB is no longer a rejection — it just means the server will split
-    // the audio before transcribing. Say so, so the wait is not a surprise.
     const willSplit = value.file.size > OPENAI_AUDIO_LIMIT_BYTES;
+    const saved = value.originalBytes - value.file.size;
 
     return (
       <div className="rounded-lg border bg-card p-5 shadow-card">
@@ -88,9 +157,19 @@ export function UploadDropzone({
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{value.file.name}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              {mb.toFixed(1)} MB
+              {mb(value.file.size)}
               {value.durationSec ? ` · ${formatDuration(value.durationSec)}` : ""}
             </p>
+
+            {value.compressed && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-on-success-soft">
+                <Wand2 className="size-3.5 shrink-0" aria-hidden />
+                Compressed here in your browser — {mb(value.originalBytes)} down to{" "}
+                {mb(value.file.size)}, {Math.round((saved / value.originalBytes) * 100)}%
+                smaller.
+              </p>
+            )}
+
             {willSplit && (
               <p className="mt-2 text-xs text-on-butter">
                 Long recording — it will be split into parts and transcribed in
@@ -114,6 +193,7 @@ export function UploadDropzone({
     );
   }
 
+  // ---- empty --------------------------------------------------------------
   return (
     <div>
       <div
@@ -147,11 +227,10 @@ export function UploadDropzone({
           <UploadCloud className="size-6 text-muted-foreground" aria-hidden />
         </div>
         <p className="font-medium">Drop the recording here</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          or click to choose a file
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">or click to choose a file</p>
         <p className="mt-4 text-xs text-muted-foreground">
-          {ACCEPTED_AUDIO_EXTENSIONS.join(", ")} · up to {MAX_UPLOAD_MB}MB
+          {ACCEPTED_AUDIO_EXTENSIONS.join(", ")} · long recordings are compressed
+          here in your browser before they are uploaded
         </p>
       </div>
 
@@ -170,3 +249,5 @@ export function UploadDropzone({
     </div>
   );
 }
+
+export { estimateCompressedBytes };

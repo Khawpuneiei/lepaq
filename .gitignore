@@ -42,3 +42,6 @@ next-env.d.ts
 
 # keep the template, ignore the real ones
 !.env.example
+
+# ffmpeg.wasm core, copied from node_modules by postinstall
+/public/ffmpeg

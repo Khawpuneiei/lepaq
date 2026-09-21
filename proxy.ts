@@ -83,9 +83,16 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except static assets and image files. API routes are
-     * included on purpose: they need the refreshed session too.
+     * Everything except static assets. API routes are included on purpose:
+     * they need the refreshed session too.
+     *
+     * `ffmpeg/` and `.wasm` are excluded explicitly. The browser-side
+     * compressor loads a 32MB core from /public, and without this the proxy
+     * answers that request with a redirect to /login — the fetch succeeds,
+     * returns HTML, and the wasm fails to instantiate with an error that
+     * points nowhere near the cause. It would also run a Supabase session
+     * check against every megabyte of a static asset.
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|ffmpeg/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|wasm)$).*)",
   ],
 };

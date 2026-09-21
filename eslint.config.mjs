@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored ffmpeg.wasm core, copied in by postinstall. It is emscripten
+    // output, not our source, and linting it produces 100+ meaningless
+    // warnings that bury real ones.
+    "public/ffmpeg/**",
   ]),
 ]);
 
