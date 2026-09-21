@@ -45,3 +45,6 @@ next-env.d.ts
 
 # ffmpeg.wasm core, copied from node_modules by postinstall
 /public/ffmpeg
+
+.vercel
+.env*
