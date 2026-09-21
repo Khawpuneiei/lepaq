@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import ffmpegPath from "ffmpeg-static";
-import ffprobeStatic from "ffprobe-static";
 
 /**
  * Long-audio support.
@@ -88,23 +87,38 @@ function run(bin: string, args: string[]): Promise<string> {
   });
 }
 
-/** Duration in seconds, or 0 when the file cannot be probed. */
+/**
+ * Duration in seconds, or 0 when the file cannot be read.
+ *
+ * Parsed out of ffmpeg rather than shelling out to ffprobe. ffprobe-static
+ * would add ~80MB to the serverless function for one number, and it resolves
+ * its binary path at runtime (`bin/${platform}/${arch}/ffprobe`), which file
+ * tracers frequently cannot follow — the failure mode is a function that
+ * builds fine and cannot probe anything in production.
+ *
+ * `ffmpeg -i file` with no output exits non-zero by design and prints the
+ * container header to stderr, which is where the duration lives.
+ */
 export async function probeDuration(filePath: string): Promise<number> {
+  let output = "";
   try {
-    const out = await run(ffprobeStatic.path, [
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      filePath,
-    ]);
-    const seconds = Number.parseFloat(out.trim());
-    return Number.isFinite(seconds) ? seconds : 0;
-  } catch {
-    return 0;
+    output = await run(resolveFfmpeg(), ["-nostdin", "-i", filePath]);
+  } catch (err) {
+    // expected: no output file was given, so ffmpeg exits 1 after printing
+    output = err instanceof Error ? err.message : "";
   }
+
+  const m = output.match(/Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d+)/);
+  if (!m) return 0;
+
+  const [, h, min, sec, frac] = m;
+  const seconds =
+    Number(h) * 3600 +
+    Number(min) * 60 +
+    Number(sec) +
+    Number(`0.${frac}`);
+
+  return Number.isFinite(seconds) ? seconds : 0;
 }
 
 /**
