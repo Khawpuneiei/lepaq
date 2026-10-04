@@ -102,6 +102,11 @@ export function NewMeetingWizard({
     setBusy(true);
     setError(null);
 
+    // Which stage we are in, so a failure says where rather than just what.
+    // "The string did not match the expected pattern" is a real message a
+    // browser can throw here, and on its own it points at nothing.
+    let step = "creating the meeting";
+
     try {
       // 1. create the row and get a signed upload URL
       const createRes = await fetch("/api/meetings", {
@@ -131,11 +136,18 @@ export function NewMeetingWizard({
       const created = await createRes.json();
       if (!createRes.ok) throw new Error(created.error ?? "Could not create the meeting.");
 
+      if (!created.path || !created.token) {
+        throw new Error(
+          `The server did not return an upload URL (path: ${created.path ? "ok" : "missing"}, token: ${created.token ? "ok" : "missing"}). Check the Supabase storage policies.`,
+        );
+      }
+
       setMeetingId(created.id);
       setStep(3);
       setUploading(true);
 
       // 2. straight to Storage — never through an API route (spec 3.1)
+      step = "uploading to storage";
       const { error: uploadError } = await createClient()
         .storage.from(AUDIO_BUCKET)
         .uploadToSignedUrl(created.path, created.token, picked.file, {
@@ -144,6 +156,7 @@ export function NewMeetingWizard({
 
       if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
       setUploading(false);
+      step = "transcribing";
 
       // 3. transcribe, resuming until every chunk is done
       void pollStatus(created.id);
@@ -171,7 +184,12 @@ export function NewMeetingWizard({
         router.push(`/meetings/${created.id}/speakers`);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong.";
+      const raw = err instanceof Error ? err.message : String(err);
+      const name = err instanceof Error ? err.name : "Error";
+      const message = `While ${step}: ${raw}${name && name !== "Error" ? ` (${name})` : ""}`;
+      // the stack is the only thing that identifies a throw from inside a
+      // dependency, and it never reaches a server log from the browser
+      console.error("[new meeting] failed while", step, err);
       setError(message);
       setStatus("failed");
       toast.error(message);
