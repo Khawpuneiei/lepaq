@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="100 70 546 526">
+  <style>
+    .cup { fill: #1f1e1c; }
+    @media (prefers-color-scheme: dark) { .cup { fill: #f7f5f1; } }
+  </style>
+  <g fill="#e2803b">
+    <rect x="174" y="142" width="36" height="84" rx="18"/>
+    <rect x="238" y="110" width="36" height="148" rx="18"/>
+    <rect x="302" y="82" width="36" height="204" rx="18"/>
+    <rect x="366" y="118" width="36" height="132" rx="18"/>
+    <rect x="430" y="138" width="36" height="92" rx="18"/>
+  </g>
+  <path class="cup" d="M112 312H528V444A140 140 0 0 1 388 584H252A140 140 0 0 1 112 444Z"/>
+  <path class="cup" d="M528 342H552A82 82 0 0 1 552 506H528V470H552A46 46 0 0 0 552 378H528Z"/>
+</svg>

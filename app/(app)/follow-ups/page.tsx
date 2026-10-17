@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { FollowUpsList, type FollowUpRow } from "@/components/shared/follow-ups-list";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata = { title: "Follow-ups · Rapport" };
+export const metadata = { title: "Follow-ups · Lepaq" };
 
 export default async function FollowUpsPage() {
   const supabase = await createClient();

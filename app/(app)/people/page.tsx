@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fallbackColumns } from "@/lib/interests";
 import type { FactCategory, InterestColumn, Sentiment } from "@/lib/types";
 
-export const metadata = { title: "People · Rapport" };
+export const metadata = { title: "People · Lepaq" };
 
 export default async function PeoplePage() {
   const supabase = await createClient();

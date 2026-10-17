@@ -25,9 +25,9 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Rapport",
+  title: "Lepaq",
   description:
-    "Turn a meeting recording into a report, follow-ups and a relationship record you actually keep.",
+    "Every coffee chat, remembered. Private AI memory for B2B relationship builders.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

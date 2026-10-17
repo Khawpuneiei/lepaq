@@ -9,7 +9,7 @@ import { StatusChip } from "@/components/shared/chips";
 import { createClient } from "@/lib/supabase/server";
 import { formatMoney, pluralise } from "@/lib/utils";
 
-export const metadata = { title: "Companies · Rapport" };
+export const metadata = { title: "Companies · Lepaq" };
 
 export default async function CompaniesPage() {
   const supabase = await createClient();

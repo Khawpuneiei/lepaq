@@ -12,7 +12,7 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { createClient } from "@/lib/supabase/server";
 import type { StatusOption } from "@/lib/types";
 
-export const metadata = { title: "Settings · Rapport" };
+export const metadata = { title: "Settings · Lepaq" };
 
 export default async function SettingsPage() {
   const supabase = await createClient();

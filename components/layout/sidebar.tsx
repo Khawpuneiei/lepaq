@@ -11,6 +11,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { LepaqLogo } from "@/components/layout/logo";
 import { cn } from "@/lib/utils";
 
 /**
@@ -63,11 +64,12 @@ export function Sidebar() {
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
       <div className="px-5 py-5">
-        <Link href="/dashboard" className="flex items-baseline gap-2">
-          <span className="font-display text-2xl text-white">Rapport</span>
+        <Link href="/dashboard" aria-label="Lepaq, go to dashboard" className="inline-flex">
+          <LepaqLogo className="text-2xl text-white" />
         </Link>
-        <p className="mt-1 text-xs text-sidebar-foreground/70">
-          Meeting intelligence
+        {/* the deck's line, so the app and the pitch say the same thing */}
+        <p className="mt-2 text-xs text-sidebar-foreground/70">
+          Every coffee chat, remembered.
         </p>
       </div>
       <SidebarNav />

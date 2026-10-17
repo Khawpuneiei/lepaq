@@ -128,7 +128,7 @@ export default async function SharedSummaryPage({ params }: PageProps<"/s/[token
             meeting. The recording and transcript are not included and are not
             shared.
           </p>
-          <p className="mt-2">Made with Rapport.</p>
+          <p className="mt-2">Made with Lepaq.</p>
         </footer>
       </article>
     </div>

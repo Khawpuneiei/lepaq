@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { LepaqLogo } from "@/components/layout/logo";
 import { SidebarNav } from "@/components/layout/sidebar";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
@@ -40,8 +41,9 @@ export function Topbar({ name, email }: { name: string; email: string }) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="w-64 bg-sidebar p-0">
-          <SheetTitle className="px-5 pt-5 font-display text-2xl text-white">
-            Rapport
+          <SheetTitle className="px-5 pt-5 text-2xl text-white">
+            <LepaqLogo />
+            <span className="sr-only">menu</span>
           </SheetTitle>
           <SidebarNav onNavigate={() => setMobileOpen(false)} />
         </SheetContent>

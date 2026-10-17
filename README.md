@@ -1,4 +1,7 @@
-# Rapport — Meeting Intelligence CRM
+# Lepaq — Meeting Intelligence CRM
+
+*Every coffee chat, remembered.* Private AI memory for B2B relationship
+builders.
 
 Upload a meeting recording, get back a report you can send, follow-ups you
 actually keep, and a relationship record for everyone in the room.

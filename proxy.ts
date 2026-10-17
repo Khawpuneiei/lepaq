@@ -55,7 +55,7 @@ export async function proxy(request: NextRequest) {
         "Set them in the deployment's environment settings and redeploy.",
     );
     return new NextResponse(
-      `Rapport is not configured.\n\n` +
+      `Lepaq is not configured.\n\n` +
         `Missing: ${missing.join(", ")}\n\n` +
         `Add these in your hosting provider's environment variables, for the\n` +
         `environment you are deploying to, then REDEPLOY — NEXT_PUBLIC_* values\n` +
@@ -103,7 +103,7 @@ export async function proxy(request: NextRequest) {
     const detail = err instanceof Error ? err.message : String(err);
     console.error("[proxy] could not reach Supabase:", detail);
     return new NextResponse(
-      `Rapport cannot reach its database.\n\n${detail}\n\n` +
+      `Lepaq cannot reach its database.\n\n${detail}\n\n` +
         `Check NEXT_PUBLIC_SUPABASE_URL is the full https://<ref>.supabase.co\n` +
         `URL, that the anon key belongs to that same project, and that the\n` +
         `project is not paused — Supabase pauses free projects after about a\n` +

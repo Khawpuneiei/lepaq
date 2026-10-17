@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { NewMeetingWizard } from "@/components/meeting/new-meeting-wizard";
 import { createClient } from "@/lib/supabase/server";
 
-export const metadata = { title: "New meeting · Rapport" };
+export const metadata = { title: "New meeting · Lepaq" };
 
 export default async function NewMeetingPage({ searchParams }: PageProps<"/meetings/new">) {
   // ?record=1 is the one-tap entry from the top bar: open straight into recording

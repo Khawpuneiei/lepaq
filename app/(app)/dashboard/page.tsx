@@ -13,7 +13,7 @@ import { MINUTES_SAVED_PER_MEETING, SENTIMENT_SCORE } from "@/lib/constants";
 import { greeting, pluralise } from "@/lib/utils";
 import type { Sentiment, StatusOption } from "@/lib/types";
 
-export const metadata = { title: "Dashboard · Rapport" };
+export const metadata = { title: "Dashboard · Lepaq" };
 
 export default async function DashboardPage() {
   const supabase = await createClient();

@@ -1,14 +1,15 @@
 import { Suspense } from "react";
 import { LoginForm } from "@/components/layout/login-form";
+import { LepaqLogo } from "@/components/layout/logo";
 
-export const metadata = { title: "Sign in · Rapport" };
+export const metadata = { title: "Sign in · Lepaq" };
 
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen">
       {/* editorial panel, hidden on small screens */}
       <div className="hidden lg:flex w-1/2 flex-col justify-between bg-sidebar p-12">
-        <span className="font-display text-3xl text-white">Rapport</span>
+        <LepaqLogo className="text-3xl text-white" />
         <div className="max-w-md">
           <p className="font-display text-4xl leading-tight text-white">
             Walk out of the meeting. Keep the relationship.

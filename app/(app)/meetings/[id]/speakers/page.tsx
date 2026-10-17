@@ -5,7 +5,7 @@ import { isMajorLabel } from "@/lib/ai/mapSpeakers";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllSegments } from "@/lib/supabase/paginate";
 
-export const metadata = { title: "Speakers · Rapport" };
+export const metadata = { title: "Speakers · Lepaq" };
 
 export default async function SpeakersPage({ params }: PageProps<"/meetings/[id]/speakers">) {
   const { id } = await params;

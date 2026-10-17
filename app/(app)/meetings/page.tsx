@@ -13,7 +13,7 @@ import { MEETING_STATUS_LABEL } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { formatDuration } from "@/lib/talkRatio";
 
-export const metadata = { title: "Meetings · Rapport" };
+export const metadata = { title: "Meetings · Lepaq" };
 
 export default async function MeetingsPage() {
   const supabase = await createClient();

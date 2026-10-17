@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------
-   Rapport design tokens  (MVP_BUILD_SPEC section 8.4)
+   Lepaq design tokens  (MVP_BUILD_SPEC section 8.4)
 
    The light theme follows the Lepaq pitch deck: warm paper #F7F5F1,
    ink #1F1E1C, stone greys, and one orange (#E2803B) spent sparingly.
