@@ -277,7 +277,7 @@ export function SpeakerReview({
         <Button
           onClick={confirm}
           disabled={busy}
-          className="bg-success-solid text-white hover:bg-success-solid-hover"
+          className="bg-brand text-on-brand hover:bg-brand-hover"
         >
           {busy && <Loader2 className="size-4 animate-spin" />}
           Confirm and write the report

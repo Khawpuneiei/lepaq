@@ -7,16 +7,25 @@
 /* ------------------------------------------------------------------
    Rapport design tokens  (MVP_BUILD_SPEC section 8.4)
 
-   Two rules the palette depends on, both easy to break by accident:
+   The light theme follows the Lepaq pitch deck: warm paper #F7F5F1,
+   ink #1F1E1C, stone greys, and one orange (#E2803B) spent sparingly.
+   The dark theme is still the original slate and indigo.
+
+   Three rules the palette depends on, all easy to break by accident:
 
    1. `--accent` is the shadcn *hover* colour: menu items, command
-      rows, ghost buttons. It stays neutral slate. The butter yellow
-      lives in `--butter` and is spent only on the coach, review
-      prompts, low-confidence markers and "Remember this" (spec 8.2
-      rule 3). If yellow starts appearing on dropdown hovers, someone
-      has wired `--butter` into `--accent`.
+      rows, ghost buttons. It stays a neutral stone. The highlight
+      tone lives in `--butter` (peach in light, from the deck) and is
+      spent only on the coach, review prompts, low-confidence markers
+      and "Remember this" (spec 8.2 rule 3). If peach starts appearing
+      on dropdown hovers, someone has wired `--butter` into `--accent`.
 
-   2. `--success` (#10B981) is 2.5:1 against white and fails AA, so it
+   2. `--brand` orange is 2.9:1 against white, so it never carries
+      white text. Filled orange buttons use `--on-brand` (the deck's
+      ink, 5.9:1) and it is reserved for the one main action on a
+      screen: Record, Process, Confirm, Approve.
+
+   3. `--success` (#10B981) is 2.5:1 against white and fails AA, so it
       is only ever a dot, bar, icon or chip fill. Filled buttons with
       white text use `--success-solid` (#047857).
    ------------------------------------------------------------------ */
@@ -59,6 +68,10 @@
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-pressed: var(--primary-pressed);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-on-brand: var(--on-brand);
+  --color-brand-soft: var(--brand-soft);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -101,34 +114,43 @@
 :root {
   --radius: 12px;
 
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* Lepaq deck palette: paper, ink, stone, orange */
+  --background: #f7f5f1;
+  --foreground: #1f1e1c;
   --card: #ffffff;
-  --card-foreground: #0f172a;
+  --card-foreground: #1f1e1c;
   --popover: #ffffff;
-  --popover-foreground: #0f172a;
+  --popover-foreground: #1f1e1c;
 
-  --primary: #1e3a8a;
+  /* ink, like the deck's headings; orange is kept for --brand */
+  --primary: #1f1e1c;
   --primary-foreground: #ffffff;
-  --primary-hover: #1e40af;
-  --primary-pressed: #172554;
+  --primary-hover: #3a3733;
+  --primary-pressed: #000000;
 
-  --secondary: #f1f5f9;
-  --secondary-foreground: #1e293b;
+  --brand: #e2803b;
+  --brand-hover: #d46f2a;
+  --on-brand: #1f1e1c;
+  --brand-soft: #f6e6d6;
 
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --secondary: #efebe4;
+  --secondary-foreground: #1f1e1c;
+
+  --muted: #efebe4;
+  --muted-foreground: #5f5b54;
 
   /* neutral hover surface — see rule 1 above */
-  --accent: #f1f5f9;
-  --accent-foreground: #0f172a;
+  --accent: #efebe4;
+  --accent-foreground: #1f1e1c;
 
-  --destructive: #dc2626;
+  /* red-700 rather than 600: 600 drops under 4.5:1 on the warm paper */
+  --destructive: #c81e1e;
   --destructive-foreground: #ffffff;
 
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #1e3a8a;
+  --border: #dcd5c8;
+  --input: #dcd5c8;
+  /* darker than --brand so a focus ring clears 3:1 on white */
+  --ring: #c96a28;
 
   --success: #10b981;
   --success-solid: #047857;
@@ -136,7 +158,7 @@
   --success-soft: #d1fae5;
   --on-success-soft: #065f46;
 
-  --danger: #dc2626;
+  --danger: #c81e1e;
   --danger-soft: #fee2e2;
   --on-danger-soft: #991b1b;
 
@@ -144,32 +166,35 @@
   --info-soft: #e0f2fe;
   --on-info-soft: #075985;
 
-  --butter: #f5e6a3;
-  --butter-soft: #fdf8e7;
-  --butter-strong: #e8d48b;
-  --on-butter: #713f12;
+  /* the deck's highlight peach, standing in for butter yellow */
+  --butter: #f6e6d6;
+  --butter-soft: #fbf4ec;
+  --butter-strong: #edc9a6;
+  --on-butter: #7a3d12;
 
   --sentiment-positive: #10b981;
-  --sentiment-neutral: #64748b;
-  --sentiment-mixed: #e8d48b;
-  --sentiment-negative: #f97316;
+  --sentiment-neutral: #8a857c;
+  --sentiment-mixed: #edc9a6;
+  /* burnt orange: still not red (spec 8.3), and 4.8:1 on its own tint */
+  --sentiment-negative: #9c4e1a;
 
-  --chart-1: #1e3a8a;
-  --chart-2: #10b981;
-  --chart-3: #0ea5e9;
-  --chart-4: #e8d48b;
-  --chart-5: #f97316;
+  /* speaker colours in the transcript use 1, 2, 3 and 5: keep them apart */
+  --chart-1: #e2803b;
+  --chart-2: #5f5b54;
+  --chart-3: #2f7d7a;
+  --chart-4: #dcd5c8;
+  --chart-5: #9c4e1a;
 
-  --sidebar: #1e3a8a;
-  --sidebar-foreground: #dbe3f4;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #1e3a8a;
-  --sidebar-accent: rgb(255 255 255 / 0.12);
+  --sidebar: #1f1e1c;
+  --sidebar-foreground: #dcd5c8;
+  --sidebar-primary: #e2803b;
+  --sidebar-primary-foreground: #1f1e1c;
+  --sidebar-accent: rgb(255 255 255 / 0.08);
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgb(255 255 255 / 0.14);
-  --sidebar-ring: #93c5fd;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #e2803b;
 
-  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.06);
+  --shadow-card: 0 1px 2px rgb(31 30 28 / 0.04), 0 4px 16px rgb(31 30 28 / 0.06);
 }
 
 .dark {
@@ -185,6 +210,12 @@
   --primary-foreground: #0b1220;
   --primary-hover: #60a5fa;
   --primary-pressed: #2563eb;
+
+  /* the record and approve actions keep the deck orange in the dark too */
+  --brand: #e2803b;
+  --brand-hover: #eb914f;
+  --on-brand: #1f1e1c;
+  --brand-soft: rgb(226 128 59 / 0.16);
 
   --secondary: #334155;
   --secondary-foreground: #f1f5f9;

@@ -47,7 +47,10 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 "bg-sidebar-accent text-sidebar-accent-foreground font-medium",
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <Icon
+              className={cn("size-4 shrink-0", active && "text-sidebar-primary")}
+              aria-hidden
+            />
             {label}
           </Link>
         );

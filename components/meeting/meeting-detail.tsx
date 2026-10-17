@@ -431,7 +431,7 @@ export function MeetingDetail({
               <Button
                 onClick={approve}
                 disabled={saving}
-                className="bg-success-solid text-white hover:bg-success-solid-hover"
+                className="bg-brand text-on-brand hover:bg-brand-hover"
               >
                 {saving && <Loader2 className="size-4 animate-spin" />}
                 Approve report
