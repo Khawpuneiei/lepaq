@@ -175,9 +175,17 @@ export default async function DashboardPage() {
           {greeting()}
           {firstName ? `, ${firstName}` : ""}.
         </h1>
-        <Button asChild className="bg-success-solid text-white hover:bg-success-solid-hover">
-          <Link href="/meetings/new">New meeting</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/meetings/new">New meeting</Link>
+          </Button>
+          <Button asChild className="bg-brand text-on-brand hover:bg-brand-hover">
+            <Link href="/meetings/new?record=1">
+              <Mic className="size-4" />
+              Record
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

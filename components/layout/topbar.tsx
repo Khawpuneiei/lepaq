@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Menu, Plus } from "lucide-react";
+import { LogOut, Menu, Mic, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -48,11 +48,19 @@ export function Topbar({ name, email }: { name: string; email: string }) {
       </Sheet>
 
       <div className="ml-auto flex items-center gap-2">
-        {/* Primary action in the top bar, borrowed from the dark reference */}
-        <Button asChild className="bg-success-solid text-white hover:bg-success-solid-hover">
-          <Link href="/meetings/new">
+        {/* One-tap capture: the tap that lands here is the gesture the
+            browser needs before it asks for the microphone */}
+        <Button asChild className="bg-brand text-on-brand hover:bg-brand-hover">
+          <Link href="/meetings/new?record=1">
+            <Mic className="size-4" />
+            Record
+          </Link>
+        </Button>
+
+        <Button asChild variant="outline">
+          <Link href="/meetings/new" aria-label="New meeting from a file">
             <Plus className="size-4" />
-            New meeting
+            <span className="hidden sm:inline">New meeting</span>
           </Link>
         </Button>
 

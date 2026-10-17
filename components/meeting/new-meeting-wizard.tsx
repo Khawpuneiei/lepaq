@@ -44,15 +44,20 @@ export function NewMeetingWizard({
   companies,
   people,
   myName,
+  startRecording = false,
 }: {
   companies: CompanyOption[];
   people: KnownPerson[];
   myName: string;
+  /** Arrived from the Record button: open in record mode and start at once. */
+  startRecording?: boolean;
 }) {
   const router = useRouter();
 
   const [step, setStep] = useState(0);
   const [picked, setPicked] = useState<PickedFile | null>(null);
+  // Auto-start once. Coming back to this step later must not start the mic.
+  const [autoRecord, setAutoRecord] = useState(startRecording);
 
   const [title, setTitle] = useState("");
   const [meetingDate, setMeetingDate] = useState(
@@ -291,7 +296,15 @@ export function NewMeetingWizard({
             Audio only. Long recordings are fine — they get split up and
             transcribed in parallel.
           </p>
-          <UploadDropzone value={picked} onChange={setPicked} />
+          <UploadDropzone
+            value={picked}
+            onChange={(v) => {
+              setAutoRecord(false);
+              setPicked(v);
+            }}
+            defaultMode={startRecording ? "record" : "upload"}
+            autoStartRecording={autoRecord}
+          />
         </section>
       )}
 
@@ -479,7 +492,7 @@ export function NewMeetingWizard({
           <Button
             onClick={submit}
             disabled={!canContinue || busy}
-            className="bg-success-solid text-white hover:bg-success-solid-hover"
+            className="bg-brand text-on-brand hover:bg-brand-hover"
           >
             {busy && <Loader2 className="size-4 animate-spin" />}
             Process meeting

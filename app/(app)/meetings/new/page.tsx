@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "New meeting · Rapport" };
 
-export default async function NewMeetingPage() {
+export default async function NewMeetingPage({ searchParams }: PageProps<"/meetings/new">) {
+  // ?record=1 is the one-tap entry from the top bar: open straight into recording
+  const { record } = await searchParams;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -37,6 +40,7 @@ export default async function NewMeetingPage() {
           (p.companies as unknown as { name: string } | null)?.name ?? null,
       }))}
       myName={profile?.full_name ?? ""}
+      startRecording={record === "1"}
     />
   );
 }
