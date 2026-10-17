@@ -109,16 +109,49 @@ export async function probeDuration(filePath: string): Promise<number> {
   }
 
   const m = output.match(/Duration:\s*(\d+):(\d{2}):(\d{2})\.(\d+)/);
-  if (!m) return 0;
+  if (!m) return decodeDuration(filePath);
 
-  const [, h, min, sec, frac] = m;
-  const seconds =
-    Number(h) * 3600 +
-    Number(min) * 60 +
-    Number(sec) +
-    Number(`0.${frac}`);
-
+  const seconds = toSeconds(m);
   return Number.isFinite(seconds) ? seconds : 0;
+}
+
+function toSeconds([, h, min, sec, frac]: RegExpMatchArray) {
+  return Number(h) * 3600 + Number(min) * 60 + Number(sec) + Number(`0.${frac}`);
+}
+
+/**
+ * Duration by decoding the whole file, for when the header does not say.
+ *
+ * That is exactly what a browser recording looks like. MediaRecorder writes
+ * WebM as a live stream and never goes back to fill in the length, so ffmpeg
+ * prints "Duration: N/A". Reading that as 0 sends a 60-minute recording down
+ * the "short and small" path as one request, which outlives the function.
+ *
+ * Decoding audio to the null muxer is cheap — an hour of Opus takes seconds —
+ * and the last progress line carries the true end time. Only the tail of
+ * stderr is kept, since ffmpeg prints a progress line every half second.
+ */
+function decodeDuration(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    let bin: string;
+    try {
+      bin = resolveFfmpeg();
+    } catch {
+      return resolve(0);
+    }
+
+    const child = spawn(bin, ["-nostdin", "-i", filePath, "-vn", "-f", "null", "-"], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let tail = "";
+    child.stderr.on("data", (d) => (tail = (tail + d.toString()).slice(-4_000)));
+    child.on("error", () => resolve(0));
+    child.on("close", () => {
+      const last = [...tail.matchAll(/time=(\d+):(\d{2}):(\d{2})\.(\d+)/g)].at(-1);
+      const seconds = last ? toSeconds(last) : 0;
+      resolve(Number.isFinite(seconds) ? seconds : 0);
+    });
+  });
 }
 
 /**
