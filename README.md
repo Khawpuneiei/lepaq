@@ -83,6 +83,80 @@ meeting is deliberately left in `review` so the dashboard inbox is not empty.
 
 ---
 
+## Architecture
+
+Four parts: the rep's browser, Next.js functions on Vercel, OpenAI, and
+Supabase. Numbered edges are the user's path through a meeting; orange marks
+where the value compounds — the analysis step and the per-person memory it
+writes.
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif","fontSize":"15px","primaryColor":"#F7F5F1","primaryTextColor":"#1F1E1C","primaryBorderColor":"#DCD5C8","lineColor":"#8A857C","clusterBkg":"#FFFFFF","clusterBorder":"#DCD5C8","edgeLabelBackground":"#FFFFFF","tertiaryColor":"#FFFFFF","titleColor":"#5F5B54"},"flowchart":{"wrappingWidth":320,"nodeSpacing":28,"rankSpacing":90,"curve":"basis","padding":12}}}%%
+flowchart LR
+    subgraph B["REP'S BROWSER · Next.js client"]
+        direction TB
+        UP["<b>New-meeting wizard</b><br/>record here or upload a file<br/>participants · PDPA consent"]
+        WASM["<b>ffmpeg.wasm</b><br/>mono 16 kHz · 48 kbps<br/>86 MB → 21 MB"]
+        REV["<b>Speaker review</b><br/>rep confirms who is who"]
+        APP["<b>Report · People · Table of Interest</b><br/>pipeline · follow-ups · handover"]
+        UP --> WASM
+    end
+
+    subgraph V["VERCEL · Next.js 16 · Node functions"]
+        direction TB
+        PX["<b>proxy.ts</b> · every request<br/>session refresh · auth guard"]
+        CREATE["<b>POST /api/meetings</b><br/>meeting row + signed upload URL"]
+        PROC["<b>POST /process</b> · max 300 s<br/>ffmpeg-static split → transcribe<br/>→ map speakers · resumes per chunk"]
+        ANA["<b>POST /analyze · /regenerate</b><br/>structured analysis<br/>one profile per person"]
+        APR["<b>POST /approve · /share</b><br/>only ticked items go live"]
+        SHARE["<b>/s/:token</b><br/>approved summary only"]
+    end
+
+    subgraph O["OPENAI"]
+        direction TB
+        STT["<b>gpt-4o-transcribe-diarize</b><br/>speaker-labelled · 3 parts in parallel"]
+        LLM["<b>gpt-5.6-luna</b><br/>Responses API · strict JSON"]
+    end
+
+    subgraph S["SUPABASE · row-level security on every table"]
+        direction TB
+        STO[("<b>Storage</b> · private<br/>audio deleted after use")]
+        DBM[("<b>Meetings</b><br/>transcripts · speakers · reports<br/>follow-ups · emotion reads")]
+        DBP[("<b>Person memory</b><br/>people · companies · facts<br/>interest columns")]
+        AUTH["<b>Auth</b>"]
+    end
+
+    UP -- "1 · create" --> CREATE
+    WASM -- "2 · upload via signed URL" --> STO
+    UP -- "3 · process" --> PROC
+    REV -- "4 · confirm speakers" --> ANA
+    APP -- "5 · approve / share" --> APR
+
+    PROC -- "download" --> STO
+    PROC -- "audio parts" --> STT
+    PROC -- "call A · speakers" --> LLM
+    ANA -- "call B · analysis" --> LLM
+
+    PROC --> DBM
+    ANA --> DBM
+    ANA -- "facts · profiles" --> DBP
+    APR --> DBM
+    SHARE -. "named fields only" .-> DBM
+    APP -- "CRUD under RLS" --> DBP
+    PX -.-> AUTH
+
+    classDef core fill:#F6E6D6,stroke:#E2803B,stroke-width:2px,color:#1F1E1C
+    classDef ai fill:#FFFFFF,stroke:#1F1E1C,stroke-width:1.5px,color:#1F1E1C
+    class DBP,ANA core
+    class STT,LLM ai
+```
+
+A static copy is in [`docs/architecture.png`](docs/architecture.png) for
+viewers that do not render Mermaid. Regenerate it from the block above (for
+example at mermaid.live) when the diagram changes.
+
+---
+
 ## How a meeting flows through the system
 
 ```
@@ -162,6 +236,28 @@ npm run check:audio   # verifies all three paths against generated audio
 
 ---
 
+## Recording in the browser
+
+**Record** in the top bar opens a new meeting and starts recording in one tap
+(`/meetings/new?record=1`). Pause stops capture without ending the session,
+so an off-the-record stretch is never in the file. Finish hands the audio to
+the same path a picked file takes. `components/meeting/audio-recorder.tsx`
+holds it.
+
+- **Format.** Chrome, Edge and Firefox record Opus in WebM; Safari records AAC
+  in MP4. Both are asked for 48kbps mono, which is already the compressor's
+  target, so a WebM recording skips the browser compression step.
+- **Duration.** MediaRecorder writes WebM as a stream and never fills in its
+  length. `probeDuration` falls back to decoding the file when the header says
+  `N/A`, so a long recording is still split instead of being sent as one
+  request. `npm run check:audio` covers this case.
+- **Nothing is uploaded while recording.** The audio lives in the tab until
+  Process meeting. A screen wake lock and a leave-page warning keep it from
+  being lost by accident, and the rep can save a copy before processing.
+  Closing the tab mid-meeting still loses it — the honest limit of a web app.
+
+---
+
 ## Privacy decisions worth knowing before you change anything
 
 These are load-bearing, not preferences (spec section 9):
@@ -200,7 +296,8 @@ advice before putting real customer data in it. This is not legal advice.
    to match, since the share dialog builds links from it.
 
 **Function size.** `ffmpeg-static` is around 78MB on Linux. `next.config.ts`
-traces only the linux/x64 ffprobe binary to keep the rest out. It fits inside
+traces that one binary into the `/process` function; ffprobe is not shipped
+at all. It fits inside
 the 250MB uncompressed limit, but if you add heavy dependencies later this is
 the first thing that will push you over.
 
@@ -221,6 +318,7 @@ components/
 lib/
   ai/             transcribe, mapSpeakers, analyze, prompts, schema, respond
   audio/chunk.ts  the long-audio splitter
+docs/             architecture.png
   pipeline/       runAnalysis, shared by analyze and regenerate
   supabase/       client (browser), server (RSC), admin (service role)
 supabase/migrations/0001_init.sql
