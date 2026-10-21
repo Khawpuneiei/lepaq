@@ -237,6 +237,37 @@ recording finish without a queue or a background worker.
 npm run check:audio   # verifies all three paths against generated audio
 ```
 
+### Self-hosted transcription (test branch)
+
+`TRANSCRIBE_BACKEND=whisperlah` swaps the OpenAI call for our own stack,
+served by `singlish-asr/scripts/serve/server.py`:
+
+| Job | Model |
+|---|---|
+| Words | WhisperLah v2 (Whisper large-v3-turbo + our Singlish adapter, CTranslate2 int8) |
+| Who spoke when | pyannote `speaker-diarization-community-1` |
+| Voice embedding | pyannote's built-in WeSpeaker ResNet34, 256-dim, not fine-tuned |
+
+The server returns the same `{speaker, start, end, text}` segments, so
+splitting, resuming, speaker mapping and review are unchanged. It also returns
+one voice embedding per speaker label; those are kept on the chunk row while
+it is in flight and then written to `speaker_embeddings` with the model name
+(migration `0004`). Nothing reads them yet: they are there to test matching
+the same voice across parts and across meetings.
+
+To try it locally: start the server on the GPU machine, apply
+`0004_speaker_embeddings.sql`, then in `.env.local`
+
+```
+TRANSCRIBE_BACKEND=whisperlah
+WHISPERLAH_URL=http://127.0.0.1:8765
+WHISPERLAH_MODE=room
+```
+
+Vercel cannot reach `127.0.0.1`, so a deployed build needs the server behind
+a public URL with `WHISPERLAH_API_KEY` set. The model weights stay on the
+serving machine and are never committed.
+
 ---
 
 ## Recording in the browser

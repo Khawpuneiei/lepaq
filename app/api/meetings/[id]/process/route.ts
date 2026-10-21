@@ -5,7 +5,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { AUDIO_BUCKET, CHUNK_TARGET_BYTES } from "@/lib/constants";
 import { cleanupWorkDir, prepareAudio, type AudioPart } from "@/lib/audio/chunk";
 import { mapWithConcurrency } from "@/lib/ai/openai";
-import { transcribePart, type RawSegment } from "@/lib/ai/transcribe";
+import {
+  TRANSCRIBE_BACKEND,
+  transcribePart,
+  type RawSegment,
+  type SpeakerEmbedding,
+} from "@/lib/ai/transcribe";
 import { mapSpeakers } from "@/lib/ai/mapSpeakers";
 
 export const runtime = "nodejs";
@@ -128,6 +133,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
           .update({
             status: "done",
             segments: result.segments,
+            // only the self-hosted backend has voice embeddings; leaving the
+            // key out keeps the OpenAI path working before migration 0004
+            ...(Object.keys(result.speakers).length > 0 ? { speakers: result.speakers } : {}),
             error: null,
             updated_at: new Date().toISOString(),
           })
@@ -182,14 +190,25 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
     }
 
     // ---- stitch ----------------------------------------------------------
-    const { data: finished } = await admin
+    // `speakers` exists only once migration 0004 has run, so ask for it only
+    // when the backend that fills it is on
+    const chunkColumns: string =
+      TRANSCRIBE_BACKEND === "whisperlah"
+        ? "chunk_index, segments, speakers"
+        : "chunk_index, segments";
+    const { data } = await admin
       .from("transcription_chunks")
-      .select("chunk_index, segments")
+      .select(chunkColumns)
       .eq("meeting_id", id)
       .order("chunk_index", { ascending: true });
+    const finished = (data ?? []) as unknown as {
+      chunk_index: number;
+      segments: RawSegment[] | null;
+      speakers?: Record<string, SpeakerEmbedding> | null;
+    }[];
 
-    const segments: RawSegment[] = (finished ?? [])
-      .flatMap((c) => (c.segments ?? []) as RawSegment[])
+    const segments: RawSegment[] = finished
+      .flatMap((c) => c.segments ?? [])
       .sort((a, b) => a.startSec - b.startSec || a.chunkIndex - b.chunkIndex);
 
     if (segments.length === 0) {
@@ -218,6 +237,30 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
         .from("transcript_segments")
         .insert(rows.slice(i, i + 500));
       if (error) throw new ApiError(error.message, 500);
+    }
+
+    // ---- voice embeddings -------------------------------------------------
+    // Only the self-hosted backend returns them: one centroid per speaker
+    // label, tagged with the model that made it. Stored per meeting for now;
+    // nothing reads them yet beyond tests of cross-part and cross-meeting
+    // matching. Deleted with the meeting.
+    const embeddingRows = finished.flatMap((c) =>
+      Object.entries(c.speakers ?? {}).map(
+        ([label, v]) => ({
+          meeting_id: id,
+          raw_speaker_label: label,
+          model: v.model,
+          dim: v.embedding.length,
+          embedding: JSON.stringify(v.embedding),
+        }),
+      ),
+    );
+    if (TRANSCRIBE_BACKEND === "whisperlah") {
+      await admin.from("speaker_embeddings").delete().eq("meeting_id", id);
+      if (embeddingRows.length > 0) {
+        const { error } = await admin.from("speaker_embeddings").insert(embeddingRows);
+        if (error) throw new ApiError(error.message, 500);
+      }
     }
 
     // ---- propose a speaker mapping ---------------------------------------
