@@ -6,8 +6,8 @@ import { NextResponse, type NextRequest } from "next/server";
  * same behaviour — see node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md
  *
  * Two jobs: refresh the Supabase auth cookie on every request, and keep
- * signed-out visitors out of the app shell. The share page /s/[token] and the
- * login page are the only public routes.
+ * signed-out visitors out of the app shell. The share page /s/[token], the
+ * login page and the /demo walkthrough are the only public routes.
  */
 
 /**
@@ -22,6 +22,8 @@ const PUBLIC_PREFIXES = [
   "/login",
   "/auth",
   "/s/",
+  // the product walkthrough: real components, made-up data, no queries
+  "/demo",
   ...(DEV_LOGIN_ENABLED ? ["/api/dev/login"] : []),
 ];
 

@@ -261,6 +261,36 @@ holds it.
 
 ---
 
+## Product walkthrough
+
+`/demo` is a 71-second film of the product, played by the app itself. The
+screens are the real components (the new-meeting wizard, speaker review,
+meeting detail, Table of Interest, share dialog), rendered with made-up data
+from `components/demo/fixtures.ts` on `/demo/frame`, inside an iframe. A
+director (`components/demo/player.tsx`) moves a cursor and a camera over
+them, following the keyframes in `components/demo/script.ts`. The page is
+public and runs no queries.
+
+Because the film is the components, it changes when they do. Cursor and
+camera targets are found the way a person would, by visible text or
+aria-label (`text=Approve report`, `label=Who is voice B?`), so a renamed
+button needs its query updated in `script.ts`. Captions there only describe
+what the code does; change them in the same commit as the feature.
+
+To render it to an MP4:
+
+```bash
+npm run build && npm run start   # one terminal
+npm run demo:record              # another; writes demo-out/lepaq-demo.mp4
+```
+
+The recorder steps the film's clock one frame at a time in headless Edge or
+Chrome and pipes screenshots to ffmpeg, so the output is a smooth 1080p/30
+file however slow the machine. `npm run demo:record -- --stills=13.8,44`
+writes PNGs of single moments instead, for checking a change.
+
+---
+
 ## Privacy decisions worth knowing before you change anything
 
 These are load-bearing, not preferences (spec section 9):
@@ -343,6 +373,7 @@ npm run typecheck     # tsc --noEmit
 npm run lint
 npm run seed          # demo data
 npm run check:audio   # long-audio splitter smoke test
+npm run demo:record   # render /demo to demo-out/lepaq-demo.mp4 (app must be running)
 ```
 
 ---

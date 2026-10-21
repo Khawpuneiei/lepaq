@@ -62,6 +62,7 @@ export function MeetingDetail({
   segments,
   company,
   appUrl,
+  initialTab = "report",
 }: {
   meeting: Meeting;
   report: MeetingReport | null;
@@ -72,10 +73,12 @@ export function MeetingDetail({
   segments: TranscriptSegment[];
   company: { id: string; name: string; status_label: string | null; status_color: string | null } | null;
   appUrl: string;
+  /** Which tab opens first. The /demo walkthrough uses it to show each tab. */
+  initialTab?: "report" | "follow-ups" | "people" | "coach" | "transcript";
 }) {
   const router = useRouter();
   const [meeting, setMeeting] = useState(initialMeeting);
-  const [tab, setTab] = useState("report");
+  const [tab, setTab] = useState<string>(initialTab);
 
   const approved = meeting.status === "ready";
   const editable = meeting.status === "review" || meeting.status === "ready";

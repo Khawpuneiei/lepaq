@@ -12,7 +12,7 @@ import {
   EngagementDots,
   SentimentChip,
 } from "@/components/shared/chips";
-import { FACT_CATEGORY_LABEL } from "@/lib/constants";
+import { factCategoryLabel } from "@/lib/constants";
 import type { ParticipantRead, PersonFact } from "@/lib/types";
 
 export interface EditableFact extends PersonFact {
@@ -109,7 +109,8 @@ export function PeopleTab({
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-xs text-muted-foreground">
-                          {FACT_CATEGORY_LABEL[fact.category]}
+                          {/* model-proposed categories are not in the fixed map */}
+                          {factCategoryLabel(fact.category)}
                         </p>
                         <p className="mt-0.5 text-sm">{fact.fact}</p>
                         {fact.evidence_quote && (

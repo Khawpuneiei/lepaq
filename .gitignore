@@ -48,3 +48,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# rendered walkthrough videos and stills (npm run demo:record)
+/demo-out/

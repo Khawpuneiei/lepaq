@@ -27,8 +27,16 @@ const NAV = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
-  const pathname = usePathname();
+export function SidebarNav({
+  onNavigate,
+  activeHref,
+}: {
+  onNavigate?: () => void;
+  /** Light this item instead of the one matching the URL (used by /demo). */
+  activeHref?: string;
+}) {
+  const urlPath = usePathname();
+  const pathname = activeHref ?? urlPath;
 
   return (
     <nav className="flex flex-col gap-1 p-3" aria-label="Main">
@@ -60,7 +68,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ activeHref }: { activeHref?: string }) {
   return (
     <aside className="hidden md:flex w-60 shrink-0 flex-col bg-sidebar border-r border-sidebar-border">
       <div className="px-5 py-5">
@@ -72,7 +80,7 @@ export function Sidebar() {
           Every coffee chat, remembered.
         </p>
       </div>
-      <SidebarNav />
+      <SidebarNav activeHref={activeHref} />
       <div className="mt-auto p-4">
         <p className="text-xs leading-relaxed text-sidebar-foreground/60">
           Everything here is private to you until you press Share.

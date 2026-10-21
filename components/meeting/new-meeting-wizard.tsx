@@ -45,17 +45,20 @@ export function NewMeetingWizard({
   people,
   myName,
   startRecording = false,
+  initialPicked = null,
 }: {
   companies: CompanyOption[];
   people: KnownPerson[];
   myName: string;
   /** Arrived from the Record button: open in record mode and start at once. */
   startRecording?: boolean;
+  /** A file already chosen, as if dropped. Used by the /demo walkthrough. */
+  initialPicked?: PickedFile | null;
 }) {
   const router = useRouter();
 
   const [step, setStep] = useState(0);
-  const [picked, setPicked] = useState<PickedFile | null>(null);
+  const [picked, setPicked] = useState<PickedFile | null>(initialPicked);
   // Auto-start once. Coming back to this step later must not start the mic.
   const [autoRecord, setAutoRecord] = useState(startRecording);
 
@@ -228,35 +231,14 @@ export function NewMeetingWizard({
   // ---- processing screen ---------------------------------------------------
   if (step === 3) {
     return (
-      <div className="mx-auto max-w-2xl">
-        <h1 className="mb-2 text-center font-display text-3xl">
-          {status === "failed" ? "Something went wrong" : "Working on it"}
-        </h1>
-        <p className="mb-8 text-center text-sm text-muted-foreground">
-          {status === "failed"
-            ? "Nothing was lost — you can retry from the meeting page."
-            : "This usually takes two to four minutes."}
-        </p>
-
-        <ProcessingSteps
-          status={status}
-          uploading={uploading}
-          progressNote={progressNote}
-          error={error}
-          chunks={chunks}
-        />
-
-        {status === "failed" && meetingId && (
-          <div className="mt-6 flex justify-center gap-2">
-            <Button variant="outline" onClick={() => router.push("/dashboard")}>
-              Back to dashboard
-            </Button>
-            <Button onClick={() => router.push(`/meetings/${meetingId}`)}>
-              Open meeting
-            </Button>
-          </div>
-        )}
-      </div>
+      <ProcessingScreen
+        status={status}
+        uploading={uploading}
+        progressNote={progressNote}
+        error={error}
+        chunks={chunks}
+        meetingId={meetingId}
+      />
     );
   }
 
@@ -499,6 +481,57 @@ export function NewMeetingWizard({
           </Button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** What the wizard shows once the file is on its way. Also used by /demo. */
+export function ProcessingScreen({
+  status,
+  uploading,
+  progressNote,
+  error,
+  chunks,
+  meetingId,
+}: {
+  status: MeetingStatus;
+  uploading: boolean;
+  progressNote: string | null;
+  error: string | null;
+  chunks: { done: number; total: number };
+  meetingId: string | null;
+}) {
+  const router = useRouter();
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h1 className="mb-2 text-center font-display text-3xl">
+        {status === "failed" ? "Something went wrong" : "Working on it"}
+      </h1>
+      <p className="mb-8 text-center text-sm text-muted-foreground">
+        {status === "failed"
+          ? "Nothing was lost — you can retry from the meeting page."
+          : "This usually takes two to four minutes."}
+      </p>
+
+      <ProcessingSteps
+        status={status}
+        uploading={uploading}
+        progressNote={progressNote}
+        error={error}
+        chunks={chunks}
+      />
+
+      {status === "failed" && meetingId && (
+        <div className="mt-6 flex justify-center gap-2">
+          <Button variant="outline" onClick={() => router.push("/dashboard")}>
+            Back to dashboard
+          </Button>
+          <Button onClick={() => router.push(`/meetings/${meetingId}`)}>
+            Open meeting
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
