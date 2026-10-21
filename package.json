@@ -16,6 +16,7 @@
     "e2e": "tsx --conditions=react-server scripts/e2e.ts",
     "check:pages": "tsx --conditions=react-server scripts/check-pages.ts",
     "check:footprint": "tsx --conditions=react-server scripts/check-footprint.ts",
+    "demo:record": "tsx scripts/record-demo.ts",
     "postinstall": "node scripts/copy-ffmpeg-core.mjs"
   },
   "dependencies": {
@@ -55,6 +56,7 @@
     "dotenv": "^18.0.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
+    "playwright-core": "^1.56.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5"

@@ -47,12 +47,14 @@ export function PeopleView({
   people,
   columns,
   ownerId,
+  initialView = "cards",
 }: {
   people: PersonRow[];
   columns: InterestColumn[];
   ownerId: string;
+  initialView?: "cards" | "table";
 }) {
-  const [view, setView] = useState<"cards" | "table">("cards");
+  const [view, setView] = useState<"cards" | "table">(initialView);
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {

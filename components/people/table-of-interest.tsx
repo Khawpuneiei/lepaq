@@ -251,7 +251,8 @@ export function TableOfInterest({
 
               return (
                 <TableRow key={row.id} className="align-top">
-                  <TableCell>
+                  {/* a width cap, or the truncate below never engages */}
+                  <TableCell className="max-w-[16rem]">
                     <Link href={`/people/${row.id}`} className="group flex items-center gap-3">
                       <Avatar className="size-9">
                         <AvatarFallback className="bg-muted text-[11px]">
@@ -277,7 +278,9 @@ export function TableOfInterest({
                     <TableCell
                       key={column.id}
                       className={cn(
-                        "max-w-[13rem]",
+                        // the base TableCell is nowrap, which let a long fact
+                        // run straight over the next column
+                        "max-w-[13rem] whitespace-normal",
                         facts.length > 1 && "bg-butter-soft dark:bg-butter",
                       )}
                     >
@@ -285,7 +288,7 @@ export function TableOfInterest({
                     </TableCell>
                   ))}
 
-                  <TableCell className="max-w-[16rem]">
+                  <TableCell className="max-w-[16rem] whitespace-normal">
                     {notes.length === 0 ? (
                       <span className="text-muted-foreground/50">—</span>
                     ) : (

@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CopyPageButton } from "@/components/shared/copy-page-button";
 import { createClient } from "@/lib/supabase/server";
-import { FACT_CATEGORY_LABEL } from "@/lib/constants";
+import { factCategoryLabel } from "@/lib/constants";
 import { dueLabel, formatDate } from "@/lib/utils";
 
 /**
@@ -115,10 +115,7 @@ export default async function HandoverPage({
                       <ul className="mt-1 space-y-0.5">
                         {theirFacts.map((f, i) => (
                           <li key={i} className="text-sm text-muted-foreground">
-                            {FACT_CATEGORY_LABEL[
-                              f.category as keyof typeof FACT_CATEGORY_LABEL
-                            ] ?? f.category}
-                            : {f.fact}
+                            {factCategoryLabel(f.category)}: {f.fact}
                           </li>
                         ))}
                       </ul>

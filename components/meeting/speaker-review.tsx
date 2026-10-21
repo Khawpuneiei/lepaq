@@ -58,15 +58,18 @@ export function SpeakerReview({
   rows,
   participants,
   chunked,
+  initialAssignments,
 }: {
   meetingId: string;
   rows: SpeakerRow[];
   participants: ParticipantOption[];
   chunked: boolean;
+  /** Choices already made, by raw label. Used by the /demo walkthrough. */
+  initialAssignments?: Record<string, string>;
 }) {
   const router = useRouter();
-  const [assignments, setAssignments] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
+  const [assignments, setAssignments] = useState<Record<string, string>>(() => ({
+    ...Object.fromEntries(
       rows.map((r) => [
         r.raw_speaker_label,
         // a low-confidence guess is deliberately NOT pre-filled
@@ -75,7 +78,8 @@ export function SpeakerReview({
           : UNASSIGNED,
       ]),
     ),
-  );
+    ...initialAssignments,
+  }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showMinor, setShowMinor] = useState(false);
