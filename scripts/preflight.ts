@@ -12,6 +12,7 @@ import "./load-env";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { randomUUID } from "node:crypto";
 
 const TABLES = [
   "profiles",
@@ -47,6 +48,7 @@ const BACKEND_TABLES: Record<string, string[]> = {
 
 let failures = 0;
 const ok = (label: string, detail = "") => console.log(`  ok    ${label}${detail ? "  — " + detail : ""}`);
+const note = (label: string, detail = "") => console.log(`  note  ${label}${detail ? "  — " + detail : ""}`);
 const bad = (label: string, detail = "") => {
   console.log(`  FAIL  ${label}${detail ? "  — " + detail : ""}`);
   failures++;
@@ -152,6 +154,52 @@ async function main() {
       ok(key, `${id} available`);
     } catch (err) {
       bad(key, `${id}: ${err instanceof Error ? err.message.slice(0, 120) : String(err)}`);
+    }
+  }
+
+  if (BACKEND === "jobs") {
+    console.log("\nGPU service (jobs)");
+    const base = process.env.WHISPERLAH_URL!.replace(/\/$/, "");
+    // None of these requests starts a GPU. /health is answered by the small
+    // web container, and only the jobs service reports a model_version there
+    // (the per-part server on :8765 answers /health too). Asking about a job
+    // that does not exist checks the token: first without one, which must be
+    // refused (so the route exists and checks auth), then with it, where 404
+    // means accepted.
+    const get = (path: string, token?: string) =>
+      fetch(`${base}${path}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        signal: AbortSignal.timeout(30_000),
+      });
+    try {
+      const res = await get("/health");
+      const body = (await res.json().catch(() => null)) as { model_version?: string } | null;
+      if (res.ok && body?.model_version) ok("health", `model ${body.model_version}`);
+      else if (res.ok) bad("health", `${base} answers /health but is not the jobs service (no model_version)`);
+      else bad("health", `${res.status} from ${base}/health`);
+    } catch (err) {
+      bad("health", `${base}/health: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const probe = `/jobs/${randomUUID()}`;
+      const anonymous = await get(probe);
+      if (anonymous.status !== 401 && anonymous.status !== 403) {
+        bad("WHISPERLAH_TOKEN", `cannot check: ${base}/jobs answered ${anonymous.status} without a token (expected 401)`);
+      } else {
+        const res = await get(probe, process.env.WHISPERLAH_TOKEN);
+        if (res.status === 404) ok("WHISPERLAH_TOKEN", "accepted");
+        else if (res.status === 401 || res.status === 403) bad("WHISPERLAH_TOKEN", `refused (${res.status})`);
+        else bad("WHISPERLAH_TOKEN", `unexpected ${res.status} for an unknown job`);
+      }
+    } catch (err) {
+      bad("WHISPERLAH_TOKEN", err instanceof Error ? err.message : String(err));
+    }
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+    if (!appUrl.startsWith("https://")) {
+      note(
+        "callbacks",
+        `${appUrl} is not public https, so results will arrive through the status poll (about 2 min late) instead of the callback`,
+      );
     }
   }
 

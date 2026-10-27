@@ -24,8 +24,9 @@ import { finishTranscription } from "@/lib/pipeline/finishTranscription";
  * person all meeting.
  *
  * The GPU scales to zero when idle, so the first job after a quiet spell
- * waits a minute or so for it to start. The meeting says so meanwhile
- * (COLD_START_NOTE) instead of looking stuck.
+ * waits for one to start: about 4 minutes in all on Modal's L4, against
+ * under a minute warm. The meeting says so meanwhile (COLD_START_NOTE)
+ * instead of looking stuck.
  */
 
 /** Long enough for the queue, a cold start, and the service's two retries. */
@@ -53,7 +54,7 @@ const SIGNATURE_SKEW_SECONDS = 300;
 const POST_TIMEOUT_MS = 30_000;
 const GET_TIMEOUT_MS = 15_000;
 
-export const COLD_START_NOTE = "Waiting for the GPU to start (about a minute)";
+export const COLD_START_NOTE = "Waiting for the GPU to start (up to about 4 minutes)";
 
 const TIMED_OUT = "Transcription took more than two hours and was stopped. Press Retry.";
 const UNREACHABLE = "Could not reach the transcription service. Press Retry.";
@@ -100,10 +101,23 @@ function config() {
   return { url: url.replace(/\/$/, ""), token };
 }
 
-function callbackUrl() {
-  const base = process.env.NEXT_PUBLIC_APP_URL;
+/**
+ * Where the service reports back. A Vercel preview reports to its own
+ * deployment, not to NEXT_PUBLIC_APP_URL (usually the production domain,
+ * running older code). Deployment Protection answers anyone else on a
+ * preview with a 401, so the project's automation bypass secret goes along
+ * when there is one; without it the callback is refused and /status picks
+ * the result up instead, a couple of minutes later.
+ */
+export function callbackUrl() {
+  const preview = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL;
+  const base = preview ? `https://${process.env.VERCEL_URL}` : process.env.NEXT_PUBLIC_APP_URL;
   if (!base) throw new Error("NEXT_PUBLIC_APP_URL is not set, so the GPU service has nowhere to report back.");
-  return `${base.replace(/\/$/, "")}/api/transcription/callback`;
+  const url = new URL(`${base.replace(/\/$/, "")}/api/transcription/callback`);
+  if (preview && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
+    url.searchParams.set("x-vercel-protection-bypass", process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
+  }
+  return url.toString();
 }
 
 function isJobResult(value: unknown): value is JobResult {

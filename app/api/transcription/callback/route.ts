@@ -12,7 +12,8 @@ export const maxDuration = 300;
  *
  * There is no user session: the HMAC signature over the raw body is the only
  * credential, so it is checked before the body is even parsed. The service
- * retries on anything but 2xx; 404 tells it the job is not ours to retry.
+ * retries a 5xx or a network error (1, 4, 16 s) and gives up on any 4xx; a
+ * callback that never lands is picked up by the /status poll instead.
  */
 export async function POST(request: Request) {
   const raw = await request.text();

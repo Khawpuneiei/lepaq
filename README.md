@@ -290,9 +290,18 @@ recording in one request, so speaker A is the same person all meeting and the
 `/api/transcription/callback`.
 
 - The GPU scales to zero when idle, so the first job after a quiet spell
-  waits about a minute for it to start. The processing screen and the meeting
-  page say "Waiting for the GPU to start" meanwhile, then "Transcribing" once
-  the service reports the job running.
+  waits for one to start. Measured on Modal's L4 with a 17.5-minute meeting:
+  229 s from POST to done cold (about 160 s of it starting the GPU), 49 s
+  warm. The processing screen and the meeting page say "Waiting for the GPU
+  to start" meanwhile, then "Transcribing" once the service reports the job
+  running, which it does only once the models are loaded.
+- The callback must reach the app over public https. A Vercel preview sends
+  its own deployment URL, and Deployment Protection would answer the service
+  with a 401 there (which it does not retry). Turn on **Protection Bypass for
+  Automation** in the project's Deployment Protection settings and Vercel
+  exposes `VERCEL_AUTOMATION_BYPASS_SECRET`, which is then added to the
+  callback URL. Without it a preview still works, but each result arrives
+  through the status poll, about two minutes late.
 - The callback is signed: `X-Lepaq-Signature: v1=<hex HMAC-SHA256(CALLBACK_SECRET, "{timestamp}.{raw body}")>`,
   checked in constant time against the raw body, with at most 300 s of clock
   skew. A repeated callback, or one for a job superseded by a Retry, does nothing.
