@@ -27,7 +27,7 @@ The app will not do anything useful until Supabase is set up.
 1. Create a project at [supabase.com](https://supabase.com).
 2. Open the SQL editor and run every file in `supabase/migrations`, in
    order, each in full:
-   - `0001_init.sql` creates the base tables, all row level security
+   - `0001_init.sql` creates the base tables and their row level security
      policies, the private `meeting-audio` storage bucket with its policies,
      and the trigger that gives each new user the default status lists;
    - `0002` and `0003` stop duplicate people and companies, and add the
@@ -35,8 +35,11 @@ The app will not do anything useful until Supabase is set up.
    - `0004` and `0005` add the speaker embeddings and the GPU job table that
      transcription writes to.
 
-   Each is safe to re-run. `npm run preflight` checks that every table is
-   there, and names the file to run from if one is missing.
+   Run each once. A later file changes some things an earlier one set up,
+   so running an older file again on its own can undo them. Once
+   `.env.local` is complete (Claude and the GPU service below too),
+   `npm run preflight` checks that every table is there, and if one is
+   missing names the file to start from.
 3. Copy Project Settings → API into `.env.local`:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -211,8 +214,9 @@ For the per-part backend, two different ceilings drive the decision, and
 conflating them is how this goes wrong:
 
 - **Size** — each request stays under 20MB (`CHUNK_TARGET_BYTES`). Re-encoding
-  to mono 16kHz 48kbps MP3 costs about 6KB/s, so an hour of speech is roughly
-  21MB. Compression alone rescues most real meetings.
+  to mono 16kHz 48kbps MP3 costs about 6KB/s, so 20MB holds just under an
+  hour of speech, and a recording short enough to go as one request (see
+  Time) always fits once re-encoded.
 - **Time** — a Vercel function dies at 300s. A single 90-minute transcription
   request can outlive that even though the file would have fitted. So audio
   past 25 minutes is split and the parts run concurrently.
@@ -424,10 +428,10 @@ advice before putting real customer data in it. This is not legal advice.
    Production and Preview, deploy.
 3. **Fluid Compute** — Project → Settings → Functions. Required for
    `maxDuration = 300` to be honoured on Hobby. The routes that call Claude
-   need the time: the job callback, `/status` and the cron (speaker mapping),
-   and `/analyze` and `/regenerate` (the report). Cut short, they leave the
-   meeting part way through. The per-part backend's resume loop also leans
-   on it.
+   need the time: the job callback, `/status`, the cron and a Retry through
+   `/process` (speaker mapping), and `/analyze` and `/regenerate` (the
+   report). Cut short, they leave the meeting part way through. The per-part
+   backend's resume loop also leans on it.
 4. **Supabase URL config** — Authentication → URL Configuration. Set Site URL
    to your deployed domain and add `https://<your-domain>/**` to Redirect
    URLs, or login redirects break in production. Update `NEXT_PUBLIC_APP_URL`
@@ -481,7 +485,7 @@ npm run typecheck     # tsc --noEmit
 npm run lint
 npm run seed          # demo data
 npm run preflight     # env, tables, bucket, Claude key and the GPU service, without writing
-npm run e2e -- a.m4a  # every route end to end against the running dev server
+npm run e2e -- a.m4a  # create, upload, process, analyze, approve, share, public page, against the dev server
 npm run check:audio   # long-audio splitter smoke test
 npm run demo:record   # render /demo to demo-out/lepaq-demo.mp4 (app must be running)
 ```

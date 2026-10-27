@@ -18,8 +18,9 @@ import ffmpegPath from "ffmpeg-static";
  * Two separate ceilings drive the decision, and they are not the same thing:
  *
  *   size — each request stays under CHUNK_TARGET_BYTES (20MB). Re-encoding to
- *          mono 16kHz 48kbps MP3 costs ~6KB/s, so an hour of speech is ~21MB.
- *          Compression alone rescues most real meetings.
+ *          mono 16kHz 48kbps MP3 costs ~6KB/s, so 20MB holds just under an
+ *          hour, and anything short enough for one request fits once
+ *          re-encoded.
  *
  *   time — a Vercel function dies at 300s. A single 90-minute transcription
  *          request can outlive that even though the file would have fit. So

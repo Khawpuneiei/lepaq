@@ -103,17 +103,20 @@ async function main() {
     // supabase-js reports success even when the table does not exist, which
     // turns a missing migration into a green preflight.
     const { error } = await db.from(t).select("*").limit(1);
-    if (error) {
-      missing.push(t);
-      bad(t, error.message.slice(0, 80));
-    } else {
+    if (!error) {
       ok(t);
+    } else {
+      // only "no such table" is a missing migration; a bad key or a dead URL
+      // fails every table the same way, and re-running migrations over a
+      // database in use can undo what the later ones changed
+      if (error.code === "PGRST205" || error.code === "42P01") missing.push(t);
+      bad(t, error.message.slice(0, 80));
     }
   }
 
   if (missing.length) {
-    // each migration builds on the one before and is safe to re-run, so
-    // start from the earliest one a missing table points at
+    // A missing table means the file that creates it never ran, so neither
+    // did the ones after it: start from the earliest such file
     const first = missing.map((t) => START_MIGRATION[t] ?? "0001_init.sql").sort()[0];
     console.log(
       `\n  ${missing.length} table(s) missing. In the Supabase SQL editor, run supabase/migrations/${first} and every migration after it, in order.`,

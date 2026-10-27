@@ -141,8 +141,9 @@ create table if not exists speaker_mappings (
   unique (meeting_id, raw_speaker_label)
 );
 
--- Per-chunk transcription state, so a run that hits the 300s function ceiling
--- resumes instead of re-paying OpenAI for chunks that already succeeded.
+-- Per-chunk transcription state for the per-part backend, so a run that hits
+-- the 300s function ceiling resumes instead of transcribing again the chunks
+-- that already succeeded.
 --
 -- The chunk's own segments are parked here as jsonb rather than written
 -- straight to transcript_segments. That buys contiguous idx numbering: the
