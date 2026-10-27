@@ -4,7 +4,7 @@ import { ApiError, apiError, friendlyError, requireOwnedMeeting, requireUser } f
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AUDIO_BUCKET, CHUNK_TARGET_BYTES } from "@/lib/constants";
 import { cleanupWorkDir, prepareAudio, type AudioPart } from "@/lib/audio/chunk";
-import { mapWithConcurrency } from "@/lib/ai/openai";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import {
   TRANSCRIBE_BACKEND,
   transcribePart,

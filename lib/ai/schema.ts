@@ -5,7 +5,7 @@ import { z } from "zod";
  *
  *   - the zod schema validates what actually came back, and is the type the
  *     rest of the app consumes;
- *   - the JSON Schema constant is what OpenAI structured output is given.
+ *   - the JSON Schema constant is what Claude structured output is given.
  *
  * They are written by hand rather than derived with a zod-to-json-schema
  * helper because strict structured output has hard requirements that are easy

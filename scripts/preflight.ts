@@ -9,7 +9,7 @@
 
 import "./load-env";
 import { createClient } from "@supabase/supabase-js";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
 const TABLES = [
   "profiles",
@@ -40,7 +40,7 @@ async function main() {
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     "SUPABASE_SERVICE_ROLE_KEY",
-    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
   ];
   for (const k of required) {
     if (process.env[k]) ok(k, `set (${process.env[k]!.length} chars)`);
@@ -115,20 +115,20 @@ async function main() {
     }
   }
 
-  console.log("\nOpenAI");
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  try {
-    const models = await openai.models.list();
-    const ids = new Set(models.data.map((m) => m.id));
-    ok("api key", `${ids.size} models visible`);
-
-    for (const key of ["OPENAI_TRANSCRIBE_MODEL", "OPENAI_LLM_MODEL"] as const) {
-      const id = process.env[key]!;
-      if (ids.has(id)) ok(key, `${id} available`);
-      else bad(key, `${id} NOT in this account's model list`);
+  console.log("\nClaude");
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const models = [
+    ["LLM_MODEL", process.env.LLM_MODEL || "claude-haiku-5-5"],
+    ["LLM_FALLBACK_MODEL", process.env.LLM_FALLBACK_MODEL || "claude-sonnet-5-5"],
+  ] as const;
+  for (const [key, id] of models) {
+    try {
+      // the Models API is free, so this checks the key and each id without spending
+      await anthropic.models.retrieve(id);
+      ok(key, `${id} available`);
+    } catch (err) {
+      bad(key, `${id}: ${err instanceof Error ? err.message.slice(0, 120) : String(err)}`);
     }
-  } catch (err) {
-    bad("api key", err instanceof Error ? err.message.slice(0, 120) : String(err));
   }
 
   console.log(

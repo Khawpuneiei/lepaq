@@ -35,22 +35,24 @@ The app will not do anything useful until Supabase is set up.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY` — server only, never `NEXT_PUBLIC`
 
-### 2. OpenAI
+### 2. Claude
 
-Add `OPENAI_API_KEY`. The model ids live in env vars so a rename is a
-dashboard edit rather than a deploy:
+Add `ANTHROPIC_API_KEY`. Speaker mapping and the meeting report are both
+structured-output calls to Claude (`lib/ai/respond.ts`):
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe-diarize` | The diarizing variant. Plain `gpt-4o-transcribe` returns no speaker labels. |
-| `OPENAI_LLM_MODEL` | `gpt-5.6-luna` | Swap to a larger tier if reports read thin. |
-| `OPENAI_REASONING_EFFORT` | `medium` | Set to `none` if you point `OPENAI_LLM_MODEL` at a non-reasoning model, which would otherwise reject the `reasoning` parameter. |
+| `LLM_MODEL` | `claude-haiku-5-5` | Answers every call first. |
+| `LLM_FALLBACK_MODEL` | `claude-sonnet-5-5` | Asked only when the first model refuses, runs out of tokens, returns JSON that fails validation, or is rate limited / overloaded after the SDK's retries. Never on a 400. |
+| `LLM_EFFORT` | `medium` | `low` to `max`. Raise if coach output reads thin. |
 
-**Check the model ids against the current OpenAI docs before your first run.**
-They came from the spec and were not verified against a live account here.
-The SDK types in `node_modules/openai` do confirm the shape of the diarize
-call: `response_format: "diarized_json"`, `chunking_strategy: "auto"`
-(required above 30 seconds), and no `prompt` support.
+The report stores which model actually answered (`meeting_reports.model`).
+The system prompts are cached; no `temperature` or prefill is sent (both are
+rejected by these models).
+
+Transcription is separate: see **Self-hosted transcription** below. The
+OpenAI path (`TRANSCRIBE_BACKEND=openai`, `OPENAI_API_KEY`) is still there
+for the deployed app until the GPU endpoint is live, and is being removed.
 
 ### 3. Signing in during development
 

@@ -58,13 +58,13 @@ export function apiError(err: unknown) {
 export function friendlyError(err: unknown): string {
   if (err instanceof Error) {
     if (/rate limit/i.test(err.message)) {
-      return "OpenAI rate limit reached. Wait a minute and press Retry.";
+      return "The AI service is rate limited. Wait a minute and press Retry.";
     }
-    if (/insufficient_quota|billing/i.test(err.message)) {
-      return "The OpenAI account has no credit left. Top it up and press Retry.";
+    if (/credit balance|billing/i.test(err.message)) {
+      return "The Anthropic account has no credit left. Top it up and press Retry.";
     }
-    if (/api key|OPENAI_API_KEY/i.test(err.message)) {
-      return "OpenAI is not configured. Add OPENAI_API_KEY to the environment and redeploy.";
+    if (/ANTHROPIC_API_KEY|OPENAI_API_KEY/.test(err.message)) {
+      return "The AI service is not configured. Add ANTHROPIC_API_KEY to the environment and redeploy.";
     }
     return err.message;
   }

@@ -17,7 +17,7 @@ import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
 import { cleanupWorkDir, prepareAudio } from "@/lib/audio/chunk";
-import { mapWithConcurrency } from "@/lib/ai/openai";
+import { mapWithConcurrency } from "@/lib/concurrency";
 import {
   stitchTranscripts,
   transcribePart,
