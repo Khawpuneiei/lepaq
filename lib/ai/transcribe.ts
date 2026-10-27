@@ -16,10 +16,14 @@ import { TRANSCRIBE_MODEL, openai } from "@/lib/ai/openai";
  * pyannote community-1 for who spoke, and pyannote's WeSpeaker ResNet34 for
  * one voice embedding per speaker. Same segment shape, Singlish-tuned, and
  * the audio never leaves our own machine.
+ *
+ * "jobs" is the same stack on the GPU service, sent the whole recording in
+ * one job (lib/asr/jobs.ts) instead of part by part through this file.
  */
 export const TRANSCRIBE_BACKEND = (process.env.TRANSCRIBE_BACKEND || "openai") as
   | "openai"
-  | "whisperlah";
+  | "whisperlah"
+  | "jobs";
 
 export interface RawSegment {
   chunkIndex: number;

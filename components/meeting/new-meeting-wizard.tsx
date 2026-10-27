@@ -167,7 +167,7 @@ export function NewMeetingWizard({
       step = "transcribing";
 
       // 3. transcribe, resuming until every chunk is done
-      void pollStatus(created.id);
+      const polled = pollStatus(created.id);
 
       for (let attempt = 0; attempt < 12; attempt++) {
         if (cancelled.current) return;
@@ -179,6 +179,15 @@ export function NewMeetingWizard({
 
         if (!res.ok) throw new Error(body.error ?? "Processing failed.");
         if (body.complete) break;
+
+        // The whole recording went to the GPU service as one job; it reports
+        // back on its own, so wait for the status poll instead of re-posting.
+        if (body.queued) {
+          step = "transcribing on the GPU service";
+          const final = await polled;
+          if (final.status === "failed") throw new Error(final.error ?? "Transcription failed.");
+          break;
+        }
 
         setChunks({ done: body.done ?? 0, total: body.total ?? 0 });
         if (attempt === 11) {
@@ -207,8 +216,11 @@ export function NewMeetingWizard({
     }
   }
 
-  /** Polls only to keep the step list honest; the loop above drives the work. */
-  async function pollStatus(id: string) {
+  /**
+   * Keeps the step list honest. For chunked runs the loop above drives the
+   * work; for a GPU job this is how the wizard learns it finished.
+   */
+  async function pollStatus(id: string): Promise<{ status: MeetingStatus | null; error: string | null }> {
     while (!cancelled.current) {
       await new Promise((r) => setTimeout(r, 3000));
       try {
@@ -220,12 +232,13 @@ export function NewMeetingWizard({
         setChunks(body.chunks ?? { done: 0, total: 0 });
         if (["awaiting_speakers", "review", "ready", "failed"].includes(body.status)) {
           if (body.status === "failed") setError(body.error);
-          return;
+          return { status: body.status, error: body.error ?? null };
         }
       } catch {
         // a dropped poll is not worth surfacing; the next one will land
       }
     }
+    return { status: null, error: null };
   }
 
   // ---- processing screen ---------------------------------------------------

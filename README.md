@@ -270,6 +270,26 @@ Vercel cannot reach `127.0.0.1`, so a deployed build needs the server behind
 a public URL with `WHISPERLAH_API_KEY` set. The model weights stay on the
 serving machine and are never committed.
 
+### Whole-file jobs on the GPU service
+
+`TRANSCRIBE_BACKEND=jobs` is the deployed shape of the same stack. `/process`
+no longer downloads or splits anything: it signs a 6-hour URL for the audio,
+records a row in `transcription_jobs` (migration `0005`), posts
+`{job_id, audio_url, callback_url, mode, num_speakers}` to `{ASR_URL}/jobs`,
+and returns. The service transcribes the whole recording in one request, so
+speaker A is the same person all meeting and the 300 s function limit no
+longer applies, then POSTs the result to `/api/transcription/callback`.
+
+- The callback is signed: `X-Lepaq-Signature: v1=<HMAC-SHA256(ASR_CALLBACK_SECRET, "{timestamp}.{raw body}")>`,
+  checked in constant time against the raw body, with at most 300 s of clock
+  skew. A repeated callback, or one for a job superseded by a Retry, does nothing.
+- If no callback arrives, `/status` (which the processing screen polls) asks
+  `GET {ASR_URL}/jobs/{id}` after 2 quiet minutes, and a daily Vercel cron
+  (`vercel.json`, `CRON_SECRET`) does the same for closed tabs. A job still
+  unfinished after an hour fails the meeting with a Retry button.
+- Everything after the transcript (speaker mapping, embeddings, audio
+  deletion) is `lib/pipeline/finishTranscription.ts`, shared with the chunked path.
+
 ---
 
 ## Recording in the browser
