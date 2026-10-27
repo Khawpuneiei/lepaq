@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { apiError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { reconcileMeeting } from "@/lib/asr/jobs";
 
@@ -29,7 +30,12 @@ export async function GET(request: Request) {
   }
 
   const started = Date.now();
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    return apiError(err);
+  }
   const { data: meetings } = await admin
     .from("meetings")
     .select("id")

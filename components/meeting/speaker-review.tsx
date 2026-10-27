@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { ProcessingSteps } from "@/components/meeting/processing-steps";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/talkRatio";
+import { readJson } from "@/lib/http";
 
 const UNASSIGNED = "__unassigned__";
 const LOW_CONFIDENCE = 0.6;
@@ -111,7 +112,7 @@ export function SpeakerReview({
         }),
       });
 
-      const body = await res.json();
+      const body = await readJson(res);
       if (!res.ok) throw new Error(body.error ?? "Could not write the report.");
 
       router.push(`/meetings/${meetingId}`);

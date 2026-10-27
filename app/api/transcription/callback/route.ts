@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { apiError } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { applyJobReport, verifyCallbackSignature, type JobReport } from "@/lib/asr/jobs";
 
@@ -35,8 +36,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "job_id and a final status are required" }, { status: 400 });
   }
 
-  const known = await applyJobReport(createAdminClient(), report);
-  if (!known) return NextResponse.json({ error: "unknown job" }, { status: 404 });
+  try {
+    const known = await applyJobReport(createAdminClient(), report);
+    if (!known) return NextResponse.json({ error: "unknown job" }, { status: 404 });
+  } catch (err) {
+    // a 5xx: the service retries, and the status poll is the backstop
+    return apiError(err);
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -16,7 +16,14 @@ export const maxDuration = 300;
  */
 export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[id]/regenerate">) {
   const { id } = await ctx.params;
-  const admin = createAdminClient();
+  // Built inside a try: thrown out here, a missing setting would reach the
+  // browser as an empty 500 ("Unexpected end of JSON input"), naming nothing.
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    return apiError(err);
+  }
 
   try {
     const user = await requireUser();

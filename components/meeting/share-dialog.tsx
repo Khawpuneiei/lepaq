@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { readJson } from "@/lib/http";
 
 const INCLUDED = [
   "Title and date",
@@ -54,7 +55,7 @@ export function ShareDialog({
     setBusy(true);
     try {
       const res = await fetch(`/api/meetings/${meetingId}/share`, { method: "POST" });
-      const body = await res.json();
+      const body = await readJson(res);
       if (!res.ok) throw new Error(body.error);
       onTokenChange(body.token);
     } catch (err) {
@@ -68,7 +69,7 @@ export function ShareDialog({
     setBusy(true);
     try {
       const res = await fetch(`/api/meetings/${meetingId}/share`, { method: "DELETE" });
-      if (!res.ok) throw new Error((await res.json()).error);
+      if (!res.ok) throw new Error((await readJson(res)).error);
       onTokenChange(null);
       toast.success("Link revoked. It stops working immediately.");
     } catch (err) {

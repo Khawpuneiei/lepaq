@@ -32,6 +32,7 @@ import { createClient } from "@/lib/supabase/client";
 import { AUDIO_BUCKET, CONSENT_SCRIPT } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { MeetingStatus } from "@/lib/types";
+import { readJson } from "@/lib/http";
 
 interface CompanyOption {
   id: string;
@@ -84,6 +85,9 @@ export function NewMeetingWizard({
   const [error, setError] = useState<string | null>(null);
   const [chunks, setChunks] = useState({ done: 0, total: 0 });
   const cancelled = useRef(false);
+  // set when submit fails, so the status poll stops overwriting "failed"
+  // with whatever the server last wrote (often still "uploaded")
+  const pollStopped = useRef(false);
 
   const selectedCompanyLabel =
     companies.find((c) => c.id === companyId)?.name || newCompanyName || "";
@@ -109,6 +113,7 @@ export function NewMeetingWizard({
     if (!picked) return;
     setBusy(true);
     setError(null);
+    pollStopped.current = false;
 
     // Which stage we are in, so a failure says where rather than just what.
     // "The string did not match the expected pattern" is a real message a
@@ -141,7 +146,7 @@ export function NewMeetingWizard({
         }),
       });
 
-      const created = await createRes.json();
+      const created = await readJson(createRes);
       if (!createRes.ok) throw new Error(created.error ?? "Could not create the meeting.");
 
       if (!created.path || !created.token) {
@@ -175,7 +180,7 @@ export function NewMeetingWizard({
         const res = await fetch(`/api/meetings/${created.id}/process`, {
           method: "POST",
         });
-        const body = await res.json();
+        const body = await readJson(res);
 
         if (!res.ok) throw new Error(body.error ?? "Processing failed.");
         if (body.complete) break;
@@ -207,6 +212,7 @@ export function NewMeetingWizard({
       // the stack is the only thing that identifies a throw from inside a
       // dependency, and it never reaches a server log from the browser
       console.error("[new meeting] failed while", step, err);
+      pollStopped.current = true;
       setError(message);
       setStatus("failed");
       toast.error(message);
@@ -221,12 +227,17 @@ export function NewMeetingWizard({
    * work; for a GPU job this is how the wizard learns it finished.
    */
   async function pollStatus(id: string): Promise<{ status: MeetingStatus | null; error: string | null }> {
-    while (!cancelled.current) {
+    // checked after every wait too: a failure can land while a poll is
+    // asleep or in flight, and its answer must not undo the "failed" state
+    const stopped = () => cancelled.current || pollStopped.current;
+    while (!stopped()) {
       await new Promise((r) => setTimeout(r, 3000));
+      if (stopped()) break;
       try {
         const res = await fetch(`/api/meetings/${id}/status`);
         if (!res.ok) continue;
-        const body = await res.json();
+        const body = await readJson(res);
+        if (stopped()) break;
         setStatus(body.status);
         setProgressNote(body.progress_note);
         setChunks(body.chunks ?? { done: 0, total: 0 });
