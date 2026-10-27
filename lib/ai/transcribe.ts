@@ -8,6 +8,7 @@ import type { TranscriptionDiarized } from "openai/resources/audio/transcription
 
 import type { AudioPart } from "@/lib/audio/chunk";
 import { TRANSCRIBE_MODEL, openai } from "@/lib/ai/openai";
+import { readEnv } from "@/lib/env";
 
 /**
  * Which transcription service runs. "openai" is the default and what Vercel
@@ -125,7 +126,7 @@ async function transcribePartWhisperLah(
   filename: string,
   opts: { namespaceLabels: boolean },
 ): Promise<PartTranscript> {
-  const base = process.env.WHISPERLAH_URL;
+  const base = readEnv("WHISPERLAH_URL");
   if (!base) {
     throw new Error("TRANSCRIBE_BACKEND=whisperlah but WHISPERLAH_URL is not set.");
   }
@@ -136,7 +137,7 @@ async function transcribePartWhisperLah(
   form.append("diarize", "true");
 
   const headers: Record<string, string> = {};
-  const token = process.env.WHISPERLAH_TOKEN || process.env.WHISPERLAH_API_KEY;
+  const token = readEnv("WHISPERLAH_TOKEN") || readEnv("WHISPERLAH_API_KEY");
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${base.replace(/\/$/, "")}/transcribe`, {

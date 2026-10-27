@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { readEnv } from "@/lib/env";
+
 /**
  * Next.js 16 renamed Middleware to Proxy. Same file position (project root),
  * same behaviour — see node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md
@@ -66,6 +68,22 @@ export async function proxy(request: NextRequest) {
         `environment you are deploying to, then REDEPLOY — NEXT_PUBLIC_* values\n` +
         `are baked in at build time, so adding them without a rebuild changes\n` +
         `nothing.`,
+      { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
+    );
+  }
+
+  // A line break inside either one puts it, and whatever was pasted after it,
+  // into the error from every request.
+  try {
+    readEnv("NEXT_PUBLIC_SUPABASE_URL");
+    readEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[proxy]", detail);
+    return new NextResponse(
+      `Lepaq is not configured.\n\n${detail}\n\n` +
+        `NEXT_PUBLIC_* values are baked in at build time, so the redeploy is\n` +
+        `what applies the fix.`,
       { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
     );
   }

@@ -2,12 +2,14 @@ import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
 
+import { readEnv } from "@/lib/env";
+
 let client: Anthropic | null = null;
 
 /** Lazily constructed so importing this module never throws at build time. */
 export function claude(): Anthropic {
   if (!client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = readEnv("ANTHROPIC_API_KEY");
     if (!apiKey) {
       throw new Error(
         "ANTHROPIC_API_KEY is not set. Copy .env.example to .env.local and add it.",
