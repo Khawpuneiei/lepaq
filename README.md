@@ -35,22 +35,24 @@ The app will not do anything useful until Supabase is set up.
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `SUPABASE_SERVICE_ROLE_KEY` — server only, never `NEXT_PUBLIC`
 
-### 2. OpenAI
+### 2. Claude
 
-Add `OPENAI_API_KEY`. The model ids live in env vars so a rename is a
-dashboard edit rather than a deploy:
+Add `ANTHROPIC_API_KEY`. Speaker mapping and the meeting report are both
+structured-output calls to Claude (`lib/ai/respond.ts`):
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OPENAI_TRANSCRIBE_MODEL` | `gpt-4o-transcribe-diarize` | The diarizing variant. Plain `gpt-4o-transcribe` returns no speaker labels. |
-| `OPENAI_LLM_MODEL` | `gpt-5.6-luna` | Swap to a larger tier if reports read thin. |
-| `OPENAI_REASONING_EFFORT` | `medium` | Set to `none` if you point `OPENAI_LLM_MODEL` at a non-reasoning model, which would otherwise reject the `reasoning` parameter. |
+| `LLM_MODEL` | `claude-haiku-5-5` | Answers every call first. |
+| `LLM_FALLBACK_MODEL` | `claude-sonnet-5-5` | Asked only when the first model refuses, runs out of tokens, returns JSON that fails validation, or is rate limited / overloaded after the SDK's retries. Never on a 400. |
+| `LLM_EFFORT` | `medium` | `low` to `max`. Raise if coach output reads thin. |
 
-**Check the model ids against the current OpenAI docs before your first run.**
-They came from the spec and were not verified against a live account here.
-The SDK types in `node_modules/openai` do confirm the shape of the diarize
-call: `response_format: "diarized_json"`, `chunking_strategy: "auto"`
-(required above 30 seconds), and no `prompt` support.
+The report stores which model actually answered (`meeting_reports.model`).
+The system prompts are cached; no `temperature` or prefill is sent (both are
+rejected by these models).
+
+Transcription is separate: see **Self-hosted transcription** below. The
+OpenAI path (`TRANSCRIBE_BACKEND=openai`, `OPENAI_API_KEY`) is still there
+for the deployed app until the GPU endpoint is live, and is being removed.
 
 ### 3. Signing in during development
 
@@ -236,6 +238,78 @@ recording finish without a queue or a background worker.
 ```bash
 npm run check:audio   # verifies all three paths against generated audio
 ```
+
+### Self-hosted transcription (test branch)
+
+`TRANSCRIBE_BACKEND=whisperlah` swaps the OpenAI call for our own stack,
+served by `singlish-asr/scripts/serve/server.py`:
+
+| Job | Model |
+|---|---|
+| Words | WhisperLah v2 (Whisper large-v3-turbo + our Singlish adapter, CTranslate2 int8) |
+| Who spoke when | pyannote `speaker-diarization-community-1` |
+| Voice embedding | pyannote's built-in WeSpeaker ResNet34, 256-dim, not fine-tuned |
+
+The server returns the same `{speaker, start, end, text}` segments, so
+splitting, resuming, speaker mapping and review are unchanged. It also returns
+one voice embedding per speaker label; those are kept on the chunk row while
+it is in flight and then written to `speaker_embeddings` with the model name
+(migration `0004`). Nothing reads them yet: they are there to test matching
+the same voice across parts and across meetings.
+
+To try it locally: start the server on the GPU machine, apply
+`0004_speaker_embeddings.sql`, then in `.env.local`
+
+```
+TRANSCRIBE_BACKEND=whisperlah
+WHISPERLAH_URL=http://127.0.0.1:8765
+WHISPERLAH_MODE=room
+```
+
+Vercel cannot reach `127.0.0.1`, so a deployed build needs the server behind
+a public URL with `WHISPERLAH_TOKEN` set. The model weights stay on the
+serving machine and are never committed.
+
+### Whole-file jobs on the GPU service
+
+`TRANSCRIBE_BACKEND=jobs` is the deployed shape of the same stack, served
+from Modal. Three settings, all set in Vercel:
+
+| Variable | What it is |
+|---|---|
+| `WHISPERLAH_URL` | base URL of the Modal app; `/jobs` and `/jobs/{id}` are appended |
+| `WHISPERLAH_TOKEN` | bearer token the service expects on both |
+| `CALLBACK_SECRET` | shared secret the service signs its callbacks with |
+
+`/process` no longer downloads or splits anything: it signs a 6-hour URL for
+the audio, records a row in `transcription_jobs` (migration `0005`), posts
+`{job_id, audio_url, callback_url, mode, num_speakers}` to
+`{WHISPERLAH_URL}/jobs`, and returns. The service transcribes the whole
+recording in one request, so speaker A is the same person all meeting and the
+300 s function limit no longer applies, then POSTs the result to
+`/api/transcription/callback`.
+
+- The GPU scales to zero when idle, so the first job after a quiet spell
+  waits about a minute for it to start. The processing screen and the meeting
+  page say "Waiting for the GPU to start" meanwhile, then "Transcribing" once
+  the service reports the job running.
+- The callback is signed: `X-Lepaq-Signature: v1=<hex HMAC-SHA256(CALLBACK_SECRET, "{timestamp}.{raw body}")>`,
+  checked in constant time against the raw body, with at most 300 s of clock
+  skew. A repeated callback, or one for a job superseded by a Retry, does nothing.
+- If no callback arrives, `/status` (which the processing screen and the
+  meeting page poll) asks `GET {WHISPERLAH_URL}/jobs/{id}` after 2 quiet
+  minutes, and a daily Vercel cron (`vercel.json`, `CRON_SECRET`) does the
+  same for closed tabs. A job still unfinished after two hours fails the
+  meeting with a Retry button; if its transcript turns up later anyway, the
+  meeting picks it back up.
+- The transcript is kept on the job row until the meeting is analysed. A
+  Retry after speaker mapping or analysis failed starts from it, without the
+  GPU and without the audio. If saving it is cut off part way (a function
+  timeout), the meeting fails after 6 minutes and Retry resumes the same way.
+- One open job per meeting (a unique index), so a double-clicked Retry cannot
+  pay for two. Users can read their jobs but not write them.
+- Everything after the transcript (speaker mapping, embeddings, audio
+  deletion) is `lib/pipeline/finishTranscription.ts`, shared with the chunked path.
 
 ---
 

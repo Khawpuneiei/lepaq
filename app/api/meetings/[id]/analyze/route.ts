@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ApiError, apiError, friendlyError, requireOwnedMeeting, requireUser } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAnalysis } from "@/lib/pipeline/runAnalysis";
+import { TRANSCRIBE_BACKEND } from "@/lib/ai/transcribe";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -88,9 +89,20 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
     // the redundant payload goes.
     await admin
       .from("transcription_chunks")
-      .update({ segments: [] })
+      // the voice embeddings parked here are in speaker_embeddings by now too
+      .update(TRANSCRIBE_BACKEND === "whisperlah" ? { segments: [], speakers: {} } : { segments: [] })
       .eq("meeting_id", id)
       .eq("status", "done");
+
+    // Same for the copy a GPU job kept so a failed step could be retried
+    // without transcribing again.
+    if (TRANSCRIBE_BACKEND === "jobs") {
+      await admin
+        .from("transcription_jobs")
+        .update({ result: null })
+        .eq("meeting_id", id)
+        .not("result", "is", null);
+    }
 
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {

@@ -24,6 +24,9 @@ const PUBLIC_PREFIXES = [
   "/s/",
   // the product walkthrough: real components, made-up data, no queries
   "/demo",
+  // machine-to-machine: each checks its own signature or secret
+  "/api/transcription/callback",
+  "/api/cron/",
   ...(DEV_LOGIN_ENABLED ? ["/api/dev/login"] : []),
 ];
 

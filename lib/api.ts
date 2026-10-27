@@ -57,16 +57,28 @@ export function apiError(err: unknown) {
 /** Readable message for the failed-state banner and the Retry button. */
 export function friendlyError(err: unknown): string {
   if (err instanceof Error) {
-    if (/rate limit/i.test(err.message)) {
-      return "OpenAI rate limit reached. Wait a minute and press Retry.";
-    }
-    if (/insufficient_quota|billing/i.test(err.message)) {
+    const m = err.message;
+    // OpenAI first: while TRANSCRIBE_BACKEND=openai its errors can still
+    // reach here, and they must not send anyone to top up Anthropic.
+    if (/insufficient_quota|exceeded your current quota/i.test(m)) {
       return "The OpenAI account has no credit left. Top it up and press Retry.";
     }
-    if (/api key|OPENAI_API_KEY/i.test(err.message)) {
-      return "OpenAI is not configured. Add OPENAI_API_KEY to the environment and redeploy.";
+    if (/OPENAI_API_KEY|Incorrect API key provided/.test(m)) {
+      return "Transcription is not configured. Check OPENAI_API_KEY and redeploy.";
     }
-    return err.message;
+    if (/credit balance is too low/i.test(m)) {
+      return "The Anthropic account has no credit left. Top it up and press Retry.";
+    }
+    if (/ANTHROPIC_API_KEY/.test(m)) {
+      return "The AI service is not configured. Add ANTHROPIC_API_KEY to the environment and redeploy.";
+    }
+    if (/WHISPERLAH_URL|WHISPERLAH_TOKEN|CALLBACK_SECRET|NEXT_PUBLIC_APP_URL/.test(m)) {
+      return "The transcription service is not configured. Check the WHISPERLAH_* settings and redeploy.";
+    }
+    if (/rate limit/i.test(m)) {
+      return "The AI service is rate limited. Wait a minute and press Retry.";
+    }
+    return m;
   }
   return "Something went wrong. Please try again.";
 }
