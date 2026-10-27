@@ -41,6 +41,7 @@ import { TranscriptTab } from "@/components/meeting/transcript-tab";
 import { ShareDialog } from "@/components/meeting/share-dialog";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, initials } from "@/lib/utils";
+import { readJson } from "@/lib/http";
 import type {
   ActionItem,
   Coach,
@@ -119,7 +120,7 @@ export function MeetingDetail({
       try {
         const res = await fetch(`/api/meetings/${meeting.id}/status`);
         if (res.ok && !stopped) {
-          const body = await res.json();
+          const body = await readJson(res);
           setMeeting((m) => ({
             ...m,
             status: body.status,
@@ -155,7 +156,7 @@ export function MeetingDetail({
     try {
       for (let attempt = 0; attempt < 12; attempt++) {
         const res = await fetch(`/api/meetings/${meeting.id}/process`, { method: "POST" });
-        const body = await res.json();
+        const body = await readJson(res);
         if (!res.ok) throw new Error(body.error ?? "Retry failed.");
         if (body.complete) {
           setMeeting((m) => ({ ...m, status: "awaiting_speakers", progress_note: null }));
@@ -225,7 +226,7 @@ export function MeetingDetail({
         }),
       });
 
-      const body = await res.json();
+      const body = await readJson(res);
       if (!res.ok) throw new Error(body.error);
 
       setMeeting((m) => ({ ...m, status: "ready" }));
@@ -246,7 +247,7 @@ export function MeetingDetail({
       const res = await fetch(`/api/meetings/${meeting.id}/regenerate`, {
         method: "POST",
       });
-      const body = await res.json();
+      const body = await readJson(res);
       if (!res.ok) throw new Error(body.error);
       toast.success("Report rewritten.");
       router.refresh();

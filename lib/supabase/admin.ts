@@ -21,7 +21,7 @@ export function createAdminClient() {
 
   if (!url || !key) {
     throw new Error(
-      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Copy .env.example to .env.local and fill them in.",
+      "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Locally, copy .env.example to .env.local and fill them in; on Vercel, add them to this environment's variables and redeploy.",
     );
   }
 

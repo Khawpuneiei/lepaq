@@ -29,7 +29,14 @@ const Body = z.object({
  */
 export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[id]/analyze">) {
   const { id } = await ctx.params;
-  const admin = createAdminClient();
+  // Built inside a try: thrown out here, a missing setting would reach the
+  // browser as an empty 500 ("Unexpected end of JSON input"), naming nothing.
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    return apiError(err);
+  }
 
   try {
     const user = await requireUser();

@@ -35,7 +35,14 @@ const SOFT_DEADLINE_MS = 230_000;
 export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[id]/process">) {
   const started = Date.now();
   const { id } = await ctx.params;
-  const admin = createAdminClient();
+  // Built inside a try: thrown out here, a missing setting would reach the
+  // browser as an empty 500 ("Unexpected end of JSON input"), naming nothing.
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch (err) {
+    return apiError(err);
+  }
   let workDir: string | null = null;
 
   try {
