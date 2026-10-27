@@ -44,7 +44,21 @@ export async function requireOwnedMeeting(meetingId: string, userId: string) {
   return data;
 }
 
+/**
+ * fetch() quotes the whole value when it refuses a header, and that value is
+ * usually a key. lib/env.ts readEnv stops the ones this app reads; this
+ * catches any other, before the message reaches the browser, the log or the
+ * meeting's error.
+ */
+const INVALID_HEADER = /invalid header value/i;
+const HEADER_KEY_MESSAGE =
+  "A key in this environment's variables has a line break inside it, so more than one line was probably pasted into it. Keep only the key itself in each, then redeploy.";
+
 export function apiError(err: unknown) {
+  if (err instanceof Error && INVALID_HEADER.test(err.message)) {
+    console.error("[api]", HEADER_KEY_MESSAGE);
+    return NextResponse.json({ error: HEADER_KEY_MESSAGE }, { status: 500 });
+  }
   if (err instanceof ApiError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
@@ -58,6 +72,9 @@ export function apiError(err: unknown) {
 export function friendlyError(err: unknown): string {
   if (err instanceof Error) {
     const m = err.message;
+    if (INVALID_HEADER.test(m)) return HEADER_KEY_MESSAGE;
+    // from lib/env.ts readEnv: already names the variable, and says what to do
+    if (/has a space or line break inside it/.test(m)) return m;
     // OpenAI first: while TRANSCRIBE_BACKEND=openai its errors can still
     // reach here, and they must not send anyone to top up Anthropic.
     if (/insufficient_quota|exceeded your current quota/i.test(m)) {

@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ApiError, friendlyError } from "@/lib/api";
 import { AUDIO_BUCKET } from "@/lib/constants";
+import { readEnv } from "@/lib/env";
 import type { RawSegment, SpeakerEmbedding } from "@/lib/ai/transcribe";
 import { finishTranscription } from "@/lib/pipeline/finishTranscription";
 
@@ -93,8 +94,8 @@ type JobRow = {
 const JOB_COLUMNS = "id, meeting_id, status, created_at, checked_at, completed_at";
 
 function config() {
-  const url = process.env.WHISPERLAH_URL;
-  const token = process.env.WHISPERLAH_TOKEN;
+  const url = readEnv("WHISPERLAH_URL");
+  const token = readEnv("WHISPERLAH_TOKEN");
   if (!url || !token) {
     throw new Error("TRANSCRIBE_BACKEND=jobs but WHISPERLAH_URL or WHISPERLAH_TOKEN is not set.");
   }
@@ -111,7 +112,7 @@ function config() {
  */
 export function callbackUrl() {
   const preview = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL;
-  const base = preview ? `https://${process.env.VERCEL_URL}` : process.env.NEXT_PUBLIC_APP_URL;
+  const base = preview ? `https://${process.env.VERCEL_URL}` : readEnv("NEXT_PUBLIC_APP_URL");
   if (!base) throw new Error("NEXT_PUBLIC_APP_URL is not set, so the GPU service has nowhere to report back.");
   const url = new URL(`${base.replace(/\/$/, "")}/api/transcription/callback`);
   if (preview && process.env.VERCEL_AUTOMATION_BYPASS_SECRET) {
