@@ -28,17 +28,16 @@ export const ACCEPTED_AUDIO_EXTENSIONS = [
  * Browser-side ceiling. Supabase free tier refuses storage objects over 50MB,
  * so raising this past 50 also needs a paid Supabase plan.
  *
- * Anything above the OpenAI 25MB per-request limit is handled server-side by
- * splitting the audio (lib/audio/chunk.ts) — it is no longer a reason to
- * reject the file at the dropzone.
+ * Length is not a reason to reject a file: the GPU service takes the whole
+ * recording in one job, and the per-part backend splits it
+ * (lib/audio/chunk.ts).
  */
 export const MAX_UPLOAD_MB = Number(
   process.env.NEXT_PUBLIC_MAX_UPLOAD_MB ?? 50,
 );
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
-/** OpenAI rejects audio uploads above 25MB. We aim under it with headroom. */
-export const OPENAI_AUDIO_LIMIT_BYTES = 25 * 1024 * 1024;
+/** Above this, the per-part backend re-encodes or splits the audio before sending it. */
 export const CHUNK_TARGET_BYTES = 20 * 1024 * 1024;
 
 export const SENTIMENT_LABEL: Record<Sentiment, string> = {

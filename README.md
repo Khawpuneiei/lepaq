@@ -25,11 +25,18 @@ The app will not do anything useful until Supabase is set up.
 ### 1. Supabase
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Open the SQL editor and run `supabase/migrations/0001_init.sql` in full.
-   It creates every table, all row level security policies, the private
-   `meeting-audio` storage bucket with its policies, and the trigger that
-   gives each new user the default status lists.
-   It is safe to re-run.
+2. Open the SQL editor and run every file in `supabase/migrations`, in
+   order, each in full:
+   - `0001_init.sql` creates the base tables, all row level security
+     policies, the private `meeting-audio` storage bucket with its policies,
+     and the trigger that gives each new user the default status lists;
+   - `0002` and `0003` stop duplicate people and companies, and add the
+     person-fact categories and the user's own Table of Interest columns;
+   - `0004` and `0005` add the speaker embeddings and the GPU job table that
+     transcription writes to.
+
+   Each is safe to re-run. `npm run preflight` checks that every table is
+   there, and names the file to run from if one is missing.
 3. Copy Project Settings → API into `.env.local`:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -50,9 +57,7 @@ The report stores which model actually answered (`meeting_reports.model`).
 The system prompts are cached; no `temperature` or prefill is sent (both are
 rejected by these models).
 
-Transcription is separate: see **Self-hosted transcription** below. The
-OpenAI path (`TRANSCRIBE_BACKEND=openai`, `OPENAI_API_KEY`) is still there
-for the deployed app until the GPU endpoint is live, and is being removed.
+Transcription is separate: see **Whole-file jobs on the GPU service** below.
 
 ### 3. Signing in during development
 
@@ -90,10 +95,10 @@ meeting is deliberately left in `review` so the dashboard inbox is not empty.
 
 ## Architecture
 
-Four parts: the rep's browser, Next.js functions on Vercel, OpenAI, and
-Supabase. Numbered edges are the user's path through a meeting; orange marks
-where the value compounds — the analysis step and the per-person memory it
-writes.
+Five parts: the rep's browser, Next.js functions on Vercel, the GPU service
+on Modal, Claude, and Supabase. Numbered edges are the user's path through a
+meeting; orange marks where the value compounds — the analysis step and the
+per-person memory it writes.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"fontFamily":"Arial, Helvetica, sans-serif","fontSize":"15px","primaryColor":"#F7F5F1","primaryTextColor":"#1F1E1C","primaryBorderColor":"#DCD5C8","lineColor":"#8A857C","clusterBkg":"#FFFFFF","clusterBorder":"#DCD5C8","edgeLabelBackground":"#FFFFFF","tertiaryColor":"#FFFFFF","titleColor":"#5F5B54"},"flowchart":{"wrappingWidth":320,"nodeSpacing":28,"rankSpacing":90,"curve":"basis","padding":12}}}%%
@@ -111,16 +116,21 @@ flowchart LR
         direction TB
         PX["<b>proxy.ts</b> · every request<br/>session refresh · auth guard"]
         CREATE["<b>POST /api/meetings</b><br/>meeting row + signed upload URL"]
-        PROC["<b>POST /process</b> · max 300 s<br/>ffmpeg-static split → transcribe<br/>→ map speakers · resumes per chunk"]
+        PROC["<b>POST /process</b><br/>signs a 6-hour audio URL<br/>posts one GPU job"]
+        CB["<b>POST /transcription/callback</b><br/>signed · status poll as backup<br/>saves transcript → maps speakers"]
         ANA["<b>POST /analyze · /regenerate</b><br/>structured analysis<br/>one profile per person"]
         APR["<b>POST /approve · /share</b><br/>only ticked items go live"]
         SHARE["<b>/s/:token</b><br/>approved summary only"]
     end
 
-    subgraph O["OPENAI"]
+    subgraph G["MODAL · GPU service"]
         direction TB
-        STT["<b>gpt-4o-transcribe-diarize</b><br/>speaker-labelled · 3 parts in parallel"]
-        LLM["<b>gpt-5.6-luna</b><br/>Responses API · strict JSON"]
+        STT["<b>WhisperLah · pyannote community-1</b><br/>WeSpeaker ResNet34 voice embeddings<br/>whole recording in one job"]
+    end
+
+    subgraph A["ANTHROPIC"]
+        direction TB
+        LLM["<b>Claude Haiku 5.5</b><br/>Sonnet 5.5 fallback · structured JSON"]
     end
 
     subgraph S["SUPABASE · row-level security on every table"]
@@ -137,12 +147,14 @@ flowchart LR
     REV -- "4 · confirm speakers" --> ANA
     APP -- "5 · approve / share" --> APR
 
-    PROC -- "download" --> STO
-    PROC -- "audio parts" --> STT
-    PROC -- "call A · speakers" --> LLM
+    PROC -- "job · signed audio URL" --> STT
+    STT -- "fetch audio" --> STO
+    STT -- "transcript" --> CB
+    CB -- "call A · speakers" --> LLM
     ANA -- "call B · analysis" --> LLM
 
     PROC --> DBM
+    CB --> DBM
     ANA --> DBM
     ANA -- "facts · profiles" --> DBP
     APR --> DBM
@@ -165,15 +177,17 @@ example at mermaid.live) when the diagram changes.
 ## How a meeting flows through the system
 
 ```
-browser                          server                        storage / OpenAI
-───────                          ──────                        ────────────────
+browser                          server                        storage / GPU / Claude
+───────                          ──────                        ──────────────────────
 POST /api/meetings ───────────►  create rows, sign upload URL
 upload file ──────────────────────────────────────────────►    Supabase Storage
-POST .../process ─────────────►  download, split if needed ──► gpt-4o-transcribe-diarize
-                                 stitch, propose speakers ───► gpt-5.6-luna (call A)
-                   ◄───────────  status: awaiting_speakers
+POST .../process ─────────────►  sign audio URL, post job ───► GPU service on Modal
+                   ◄───────────  status: transcribing          (fetches the audio itself)
+                                 callback or status poll ◄───  transcript, voice embeddings
+                                 propose speakers ───────────► Claude (call A)
+GET .../status     ◄───────────  status: awaiting_speakers
 user confirms speakers
-POST .../analyze ─────────────►  rewrite labels, analyse ────► gpt-5.6-luna (call B)
+POST .../analyze ─────────────►  rewrite labels, analyse ────► Claude (call B)
                    ◄───────────  status: review
 user approves ────────────────►  status: ready
 ```
@@ -188,15 +202,17 @@ unapproved wears a **Draft** badge.
 
 ## Long recordings
 
-The spec capped uploads at 25MB and put chunking on the roadmap. This build
-does the chunking, so the cap is the Supabase object limit (50MB) instead.
+The spec capped uploads at 25MB and put chunking on the roadmap. The cap here
+is the Supabase object limit (50MB) instead. The GPU service takes the whole
+recording in one job, so length only matters to the browser upload and to the
+per-part backend (`TRANSCRIBE_BACKEND=whisperlah`), which splits server-side.
 
-Two different ceilings drive the decision, and conflating them is how this
-goes wrong:
+For the per-part backend, two different ceilings drive the decision, and
+conflating them is how this goes wrong:
 
-- **Size** — OpenAI refuses audio over 25MB per request. Re-encoding to mono
-  16kHz 48kbps MP3 costs about 6KB/s, so an hour of speech is roughly 21MB.
-  Compression alone rescues most real meetings.
+- **Size** — each request stays under 20MB (`CHUNK_TARGET_BYTES`). Re-encoding
+  to mono 16kHz 48kbps MP3 costs about 6KB/s, so an hour of speech is roughly
+  21MB. Compression alone rescues most real meetings.
 - **Time** — a Vercel function dies at 300s. A single 90-minute transcription
   request can outlive that even though the file would have fitted. So audio
   past 25 minutes is split and the parts run concurrently.
@@ -216,7 +232,8 @@ used deliberately so no COOP/COEP headers are needed. If it cannot load for
 any reason, the original file is uploaded instead and the old size limit
 applies — compression is an optimisation, never a gate.
 
-Server-side, `lib/audio/chunk.ts` then picks one of three paths:
+Server-side, on the per-part backend, `lib/audio/chunk.ts` then picks one of
+three paths:
 
 1. short and small — send the original bytes, ffmpeg never runs;
 2. oversized but under 25 minutes — one re-encoded MP3, still one request;
@@ -241,8 +258,8 @@ npm run check:audio   # verifies all three paths against generated audio
 
 ### Self-hosted transcription (test branch)
 
-`TRANSCRIBE_BACKEND=whisperlah` swaps the OpenAI call for our own stack,
-served by `singlish-asr/scripts/serve/server.py`:
+`TRANSCRIBE_BACKEND=whisperlah` sends the recording part by part to our own
+server, `singlish-asr/scripts/serve/server.py`:
 
 | Job | Model |
 |---|---|
@@ -250,8 +267,9 @@ served by `singlish-asr/scripts/serve/server.py`:
 | Who spoke when | pyannote `speaker-diarization-community-1` |
 | Voice embedding | pyannote's built-in WeSpeaker ResNet34, 256-dim, not fine-tuned |
 
-The server returns the same `{speaker, start, end, text}` segments, so
-splitting, resuming, speaker mapping and review are unchanged. It also returns
+The server returns `{speaker, start, end, text}` segments for each part;
+`/process` stores them per part, resumes and stitches them as described above,
+and speaker mapping and review work as on the jobs backend. It also returns
 one voice embedding per speaker label; those are kept on the chunk row while
 it is in flight and then written to `speaker_embeddings` with the model name
 (migration `0004`). Nothing reads them yet: they are there to test matching
@@ -272,8 +290,8 @@ serving machine and are never committed.
 
 ### Whole-file jobs on the GPU service
 
-`TRANSCRIBE_BACKEND=jobs` is the deployed shape of the same stack, served
-from Modal. Three settings, all set in Vercel:
+`TRANSCRIBE_BACKEND=jobs` is the default and the deployed shape of the same
+stack, served from Modal. Three settings, all set in Vercel:
 
 | Variable | What it is |
 |---|---|
@@ -334,9 +352,10 @@ holds it.
   in MP4. Both are asked for 48kbps mono, which is already the compressor's
   target, so a WebM recording skips the browser compression step.
 - **Duration.** MediaRecorder writes WebM as a stream and never fills in its
-  length. `probeDuration` falls back to decoding the file when the header says
-  `N/A`, so a long recording is still split instead of being sent as one
-  request. `npm run check:audio` covers this case.
+  length. On the per-part backend, `probeDuration` falls back to decoding the
+  file when the header says `N/A`, so a long recording is still split instead
+  of being sent as one request. `npm run check:audio` covers this case. The
+  GPU jobs backend sends the whole file whatever its length.
 - **Nothing is uploaded while recording.** The audio lives in the tab until
   Process meeting. A screen wake lock and a leave-page warning keep it from
   being lost by accident, and the rep can save a copy before processing.
@@ -404,8 +423,11 @@ advice before putting real customer data in it. This is not legal advice.
 2. **Vercel** — import the repo, add every variable from `.env.example` for
    Production and Preview, deploy.
 3. **Fluid Compute** — Project → Settings → Functions. Required for
-   `maxDuration = 300` to be honoured on Hobby. Without it the long-audio
-   path will keep needing resume rounds.
+   `maxDuration = 300` to be honoured on Hobby. The routes that call Claude
+   need the time: the job callback, `/status` and the cron (speaker mapping),
+   and `/analyze` and `/regenerate` (the report). Cut short, they leave the
+   meeting part way through. The per-part backend's resume loop also leans
+   on it.
 4. **Supabase URL config** — Authentication → URL Configuration. Set Site URL
    to your deployed domain and add `https://<your-domain>/**` to Redirect
    URLs, or login redirects break in production. Update `NEXT_PUBLIC_APP_URL`
@@ -427,18 +449,21 @@ Hobby is for non-commercial use. Fine for demos and user interviews.
 app/
   (app)/          dashboard, meetings, people, companies, follow-ups, settings
   (auth)/login
-  api/meetings/   create, process, analyze, approve, share, audio, regenerate
+  api/meetings/   create, process, status, analyze, approve, share, audio, regenerate
+  api/transcription/callback   where the GPU service reports a finished job
+  api/cron/transcription-jobs  daily sweep for jobs whose callback never came
   s/[token]/      the only public page
 components/
   layout/ dashboard/ meeting/ people/ shared/ ui/
 lib/
-  ai/             transcribe, mapSpeakers, analyze, prompts, schema, respond
-  audio/chunk.ts  the long-audio splitter
-docs/             architecture.png
-  pipeline/       runAnalysis, shared by analyze and regenerate
+  ai/             transcribe, claude, mapSpeakers, analyze, prompts, schema, respond
+  asr/jobs.ts     whole-file jobs on the GPU service
+  audio/chunk.ts  the long-audio splitter (per-part backend)
+  pipeline/       finishTranscription (after any transcript), runAnalysis (analyze, regenerate)
   supabase/       client (browser), server (RSC), admin (service role)
-supabase/migrations/0001_init.sql
-scripts/          seed.ts, check-audio.ts
+docs/             architecture.png
+supabase/migrations/  0001-0005, run in order
+scripts/          preflight, e2e, try-pipeline, seed, check-audio
 proxy.ts          auth guard — Next 16 renamed middleware to proxy
 ```
 
@@ -455,6 +480,8 @@ npm run build         # production build
 npm run typecheck     # tsc --noEmit
 npm run lint
 npm run seed          # demo data
+npm run preflight     # env, tables, bucket, Claude key and the GPU service, without writing
+npm run e2e -- a.m4a  # every route end to end against the running dev server
 npm run check:audio   # long-audio splitter smoke test
 npm run demo:record   # render /demo to demo-out/lepaq-demo.mp4 (app must be running)
 ```
@@ -465,11 +492,11 @@ npm run demo:record   # render /demo to demo-out/lepaq-demo.mp4 (app must be run
 
 | Spec | Here | Why |
 |---|---|---|
-| Upload capped at 25MB, chunking on the roadmap | Capped at the 50MB Supabase limit, split server-side | Requested as part of this build |
+| Upload capped at 25MB, chunking on the roadmap | Capped at the 50MB Supabase limit; the GPU service takes the whole file, the per-part backend splits it | Requested as part of this build |
 | `middleware.ts` | `proxy.ts` | Next.js 16 renamed it; same file position and behaviour |
 | State machine `transcribing → analyzing` | Added `awaiting_speakers` between them | Spec 5.2 puts a mandatory human gate there. Leaving the row in `transcribing` while it waits on a person makes the dashboard lie about what is running |
 | Speaker label stored on `meeting_participants` | Added `speaker_mappings` and `transcript_segments.raw_speaker_label` | One participant now maps to many raw labels, one per part. An array column would not have supported re-mapping without re-transcribing |
-| Analysis schema defined once in zod | zod for validation, hand-written JSON Schema for the API | Strict structured output requires `additionalProperties: false` and every property in `required`, and ignores `maxItems`. Caps are enforced in `clampAnalysis` instead |
+| Analysis schema defined once in zod | zod for validation, hand-written JSON Schema for the API | Structured output requires `additionalProperties: false` on every object and does not support `maxItems`. Caps are enforced in `clampAnalysis` instead |
 | Handover brief, optionally one LLM call | Template over existing data only | The spec marked the LLM call optional; the template needs no key and cannot invent a commitment |
 | Tailwind config file | Tailwind v4 CSS-first tokens in `app/globals.css` | v4 is what `create-next-app` ships now |
 

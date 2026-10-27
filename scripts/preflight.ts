@@ -5,13 +5,12 @@
  * Verifies, without writing anything: env vars present, Supabase reachable,
  * every table from the migrations exists, the storage bucket exists, the
  * Claude key can see both models, and whatever TRANSCRIBE_BACKEND needs is
- * set (and, for OpenAI, that the transcription model is visible).
+ * set (and, for the GPU jobs service, that it answers and takes the token).
  */
 
 import "./load-env";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
-import OpenAI from "openai";
 import { randomUUID } from "node:crypto";
 
 const TABLES = [
@@ -28,22 +27,32 @@ const TABLES = [
   "action_items",
   "participant_reads",
   "person_facts",
+  "interest_columns",
 ];
 
-const BACKEND = process.env.TRANSCRIBE_BACKEND || "openai";
+const BACKEND = process.env.TRANSCRIBE_BACKEND || "jobs";
 
 /** what each transcription backend cannot run without */
 const BACKEND_ENV: Record<string, string[]> = {
-  openai: ["OPENAI_API_KEY"],
   whisperlah: ["WHISPERLAH_URL"],
   jobs: ["WHISPERLAH_URL", "WHISPERLAH_TOKEN", "CALLBACK_SECRET", "NEXT_PUBLIC_APP_URL"],
 };
 
 /** tables the backend writes to on top of the base schema */
 const BACKEND_TABLES: Record<string, string[]> = {
-  openai: [],
   whisperlah: ["speaker_embeddings"],
   jobs: ["speaker_embeddings", "transcription_jobs"],
+};
+
+/**
+ * The migration to start from when a table outside 0001 is missing.
+ * interest_columns comes from 0003, but 0003 builds on 0002, which has no
+ * table of its own to check, so a gap there starts from 0002.
+ */
+const START_MIGRATION: Record<string, string> = {
+  interest_columns: "0002_people_and_interests.sql",
+  speaker_embeddings: "0004_speaker_embeddings.sql",
+  transcription_jobs: "0005_transcription_jobs.sql",
 };
 
 let failures = 0;
@@ -63,7 +72,14 @@ async function main() {
     "ANTHROPIC_API_KEY",
   ];
   if (!BACKEND_ENV[BACKEND]) {
-    bad("TRANSCRIBE_BACKEND", `"${BACKEND}" is not one of ${Object.keys(BACKEND_ENV).join(", ")}`);
+    // the app runs anything it does not know as "jobs"; say so rather than
+    // let it look as if the old backend were still in use
+    bad(
+      "TRANSCRIBE_BACKEND",
+      BACKEND === "openai"
+        ? `"openai" was removed. Set it to jobs, or delete the line (jobs is the default)`
+        : `"${BACKEND}" is not one of ${Object.keys(BACKEND_ENV).join(", ")}`,
+    );
   } else {
     ok("TRANSCRIBE_BACKEND", BACKEND);
     required.push(...BACKEND_ENV[BACKEND]);
@@ -96,8 +112,11 @@ async function main() {
   }
 
   if (missing.length) {
+    // each migration builds on the one before and is safe to re-run, so
+    // start from the earliest one a missing table points at
+    const first = missing.map((t) => START_MIGRATION[t] ?? "0001_init.sql").sort()[0];
     console.log(
-      `\n  ${missing.length} table(s) missing. Run supabase/migrations/0001_init.sql in the Supabase SQL editor.`,
+      `\n  ${missing.length} table(s) missing. In the Supabase SQL editor, run supabase/migrations/${first} and every migration after it, in order.`,
     );
   }
 
@@ -200,21 +219,6 @@ async function main() {
         "callbacks",
         `${appUrl} is not public https, so results will arrive through the status poll (about 2 min late) instead of the callback`,
       );
-    }
-  }
-
-  if (BACKEND === "openai") {
-    console.log("\nOpenAI (transcription)");
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const id = process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-transcribe-diarize";
-    try {
-      // listing models is free; nothing here spends credit
-      const models = await openai.models.list();
-      const ids = new Set(models.data.map((m) => m.id));
-      if (ids.has(id)) ok("OPENAI_TRANSCRIBE_MODEL", `${id} available`);
-      else bad("OPENAI_TRANSCRIBE_MODEL", `${id} NOT in this account's model list`);
-    } catch (err) {
-      bad("OPENAI_API_KEY", err instanceof Error ? err.message.slice(0, 120) : String(err));
     }
   }
 

@@ -8,12 +8,13 @@ import { z } from "zod";
  *   - the JSON Schema constant is what Claude structured output is given.
  *
  * They are written by hand rather than derived with a zod-to-json-schema
- * helper because strict structured output has hard requirements that are easy
- * to violate silently: every object needs `additionalProperties: false`, every
- * property must appear in `required` (optionality is expressed as a null
- * union), and length keywords like maxItems are not honoured. Caps such as
+ * helper because structured output has hard requirements that are easy to
+ * violate silently: every object needs `additionalProperties: false`, and
+ * array length keywords like maxItems are not supported. Caps such as
  * "at most 6 takeaways" are therefore enforced in code by
- * `clampAnalysis`, not by the schema.
+ * `clampAnalysis`, not by the schema. Every property is listed in `required`
+ * by choice, not because the API asks for it: optionality is a null union, so
+ * every answer has the same shape.
  */
 
 export const SENTIMENTS = ["positive", "neutral", "mixed", "negative"] as const;

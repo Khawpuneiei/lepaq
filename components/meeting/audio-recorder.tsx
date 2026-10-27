@@ -25,8 +25,8 @@ type Phase = "idle" | "starting" | "recording" | "paused";
 
 /**
  * In order of preference. Opus in WebM is what Chrome, Edge and Firefox
- * produce; Safari produces AAC in MP4. Both are formats the server and
- * OpenAI accept, and both extensions are on the upload allow-list.
+ * produce; Safari produces AAC in MP4. Both are formats ffmpeg and the
+ * transcription service read, and both extensions are on the upload allow-list.
  */
 const FORMATS = [
   { mime: "audio/webm;codecs=opus", ext: "webm" },

@@ -3,28 +3,26 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { toFile } from "openai";
-import type { TranscriptionDiarized } from "openai/resources/audio/transcriptions";
-
 import type { AudioPart } from "@/lib/audio/chunk";
-import { TRANSCRIBE_MODEL, openai } from "@/lib/ai/openai";
 import { readEnv } from "@/lib/env";
 
 /**
- * Which transcription service runs. "openai" is the default and what Vercel
- * runs today. "whisperlah" points at the self-hosted server
- * (singlish-asr/scripts/serve/server.py): WhisperLah v2 for the words,
- * pyannote community-1 for who spoke, and pyannote's WeSpeaker ResNet34 for
- * one voice embedding per speaker. Same segment shape, Singlish-tuned, and
- * the audio never leaves our own machine.
+ * Which transcription service runs.
  *
- * "jobs" is the same stack on the GPU service, sent the whole recording in
- * one job (lib/asr/jobs.ts) instead of part by part through this file.
+ * "jobs" (the default, and what Vercel runs) sends the whole recording to the
+ * GPU service on Modal in one job (lib/asr/jobs.ts): WhisperLah for the
+ * words, pyannote community-1 for who spoke, and pyannote's WeSpeaker
+ * ResNet34 for one voice embedding per speaker.
+ *
+ * "whisperlah" runs the same models on a server of our own
+ * (singlish-asr/scripts/serve/server.py), sent the recording part by part
+ * through this file.
+ *
+ * Anything else counts as "jobs", including "openai" from an old .env.local:
+ * that backend is gone, and npm run preflight says so.
  */
-export const TRANSCRIBE_BACKEND = (process.env.TRANSCRIBE_BACKEND || "openai") as
-  | "openai"
-  | "whisperlah"
-  | "jobs";
+export const TRANSCRIBE_BACKEND: "jobs" | "whisperlah" =
+  process.env.TRANSCRIBE_BACKEND === "whisperlah" ? "whisperlah" : "jobs";
 
 export interface RawSegment {
   chunkIndex: number;
@@ -46,61 +44,8 @@ export interface PartTranscript {
   index: number;
   segments: RawSegment[];
   durationSec: number;
-  /** Keyed by the stored label ("A" or "c0_A"). Empty for the OpenAI backend. */
+  /** Keyed by the stored label ("A" or "c0_A"). */
   speakers: Record<string, SpeakerEmbedding>;
-}
-
-/**
- * Transcribe one audio part with speaker diarization.
- *
- * Notes that cost time to rediscover:
- *  - `chunking_strategy` is REQUIRED by gpt-4o-transcribe-diarize for anything
- *    longer than 30 seconds. Omit it and the call fails.
- *  - `prompt` and `include` are NOT supported by the diarize model, so the
- *    participant names from the form cannot be fed in here. They are given to
- *    the speaker-mapping call instead.
- *  - `language` is left unset on purpose. The persona works in Singapore and
- *    code-switches into Mandarin, Malay and Tamil; pinning language to "en"
- *    makes those stretches worse, not better.
- *
- * `part.startSec` is added to every timestamp so a split recording still has
- * one continuous timeline, and the speaker label is namespaced per part
- * because diarization labels are only unique within a single request.
- */
-export async function transcribePart(
-  part: AudioPart,
-  opts: { namespaceLabels: boolean },
-): Promise<PartTranscript> {
-  const bytes = await readFile(part.filePath);
-  const filename = path.basename(part.filePath);
-
-  if (TRANSCRIBE_BACKEND === "whisperlah") {
-    return transcribePartWhisperLah(part, bytes, filename, opts);
-  }
-
-  const response = (await openai().audio.transcriptions.create({
-    file: await toFile(bytes, filename),
-    model: TRANSCRIBE_MODEL,
-    response_format: "diarized_json",
-    chunking_strategy: "auto",
-  })) as unknown as TranscriptionDiarized;
-
-  const segments = (response.segments ?? []).map<RawSegment>((s) => ({
-    chunkIndex: part.index,
-    rawSpeakerLabel: opts.namespaceLabels
-      ? `c${part.index}_${s.speaker}`
-      : s.speaker,
-    startSec: (s.start ?? 0) + part.startSec,
-    endSec: (s.end ?? 0) + part.startSec,
-    text: (s.text ?? "").trim(),
-  }));
-
-  return {
-    index: part.index,
-    segments: segments.filter((s) => s.text.length > 0),
-    durationSec: response.duration ?? part.endSec - part.startSec,
-    speakers: {},
-  };
 }
 
 interface WhisperLahResponse {
@@ -111,25 +56,29 @@ interface WhisperLahResponse {
 }
 
 /**
- * Self-hosted WhisperLah (faster-whisper + pyannote). The server already
- * returns one segment per speaker turn with A/B/C labels, so this only
- * namespaces the labels and shifts timestamps like the OpenAI path does.
+ * Transcribe one audio part with speaker diarization, on the self-hosted
+ * WhisperLah server (faster-whisper + pyannote). The server already returns
+ * one segment per speaker turn with A/B/C labels.
+ *
+ * `part.startSec` is added to every timestamp so a split recording still has
+ * one continuous timeline, and the speaker label is namespaced per part
+ * because diarization labels are only unique within a single request.
  *
  *  - `WHISPERLAH_URL`      e.g. http://127.0.0.1:8765 (required for this backend)
  *  - `WHISPERLAH_TOKEN`    sent as a bearer token when the server was started with one
  *                         (`WHISPERLAH_API_KEY`, the older name, still works)
  *  - `WHISPERLAH_MODE`     "room" (default, everyone in the room) or "near" (lapel mic wearer only)
  */
-async function transcribePartWhisperLah(
+export async function transcribePart(
   part: AudioPart,
-  bytes: Buffer,
-  filename: string,
   opts: { namespaceLabels: boolean },
 ): Promise<PartTranscript> {
   const base = readEnv("WHISPERLAH_URL");
   if (!base) {
     throw new Error("TRANSCRIBE_BACKEND=whisperlah but WHISPERLAH_URL is not set.");
   }
+  const bytes = await readFile(part.filePath);
+  const filename = path.basename(part.filePath);
 
   const form = new FormData();
   form.append("file", new Blob([new Uint8Array(bytes)]), filename);

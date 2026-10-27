@@ -18,7 +18,6 @@ import {
   ACCEPTED_AUDIO_EXTENSIONS,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
-  OPENAI_AUDIO_LIMIT_BYTES,
 } from "@/lib/constants";
 
 export interface PickedFile {
@@ -173,7 +172,6 @@ export function UploadDropzone({
 
   // ---- chosen -------------------------------------------------------------
   if (value) {
-    const willSplit = value.file.size > OPENAI_AUDIO_LIMIT_BYTES;
     const saved = value.originalBytes - value.file.size;
 
     return (
@@ -221,13 +219,6 @@ export function UploadDropzone({
                   save a copy
                 </button>
                 .
-              </p>
-            )}
-
-            {willSplit && (
-              <p className="mt-2 text-xs text-on-butter">
-                Long recording — it will be split into parts and transcribed in
-                parallel. Expect a few minutes.
               </p>
             )}
           </div>

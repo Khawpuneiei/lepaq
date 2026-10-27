@@ -27,8 +27,7 @@ export async function finishTranscription(args: {
     audio_path: string | null;
   };
   segments: RawSegment[];
-  /** null when the backend has no voice embeddings to store */
-  embeddings: ({ label: string } & SpeakerEmbedding)[] | null;
+  embeddings: ({ label: string } & SpeakerEmbedding)[];
   /** labels are namespaced per part (c0_A), so the mapping prompt says so */
   chunked: boolean;
 }): Promise<{ segments: number; speakers: number }> {
@@ -71,21 +70,19 @@ export async function finishTranscription(args: {
   // One centroid per speaker label, tagged with the model that made it.
   // Stored per meeting; nothing reads them yet beyond tests of cross-meeting
   // matching. Deleted with the meeting.
-  if (args.embeddings) {
-    await admin.from("speaker_embeddings").delete().eq("meeting_id", id);
-    const embeddingRows = args.embeddings
-      .filter((e) => e.model && e.embedding.length > 0)
-      .map((e) => ({
-        meeting_id: id,
-        raw_speaker_label: e.label,
-        model: e.model,
-        dim: e.embedding.length,
-        embedding: JSON.stringify(e.embedding),
-      }));
-    if (embeddingRows.length > 0) {
-      const { error } = await admin.from("speaker_embeddings").insert(embeddingRows);
-      if (error) throw new ApiError(error.message, 500);
-    }
+  await admin.from("speaker_embeddings").delete().eq("meeting_id", id);
+  const embeddingRows = args.embeddings
+    .filter((e) => e.model && e.embedding.length > 0)
+    .map((e) => ({
+      meeting_id: id,
+      raw_speaker_label: e.label,
+      model: e.model,
+      dim: e.embedding.length,
+      embedding: JSON.stringify(e.embedding),
+    }));
+  if (embeddingRows.length > 0) {
+    const { error } = await admin.from("speaker_embeddings").insert(embeddingRows);
+    if (error) throw new ApiError(error.message, 500);
   }
 
   // ---- propose a speaker mapping ---------------------------------------

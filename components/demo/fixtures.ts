@@ -236,7 +236,7 @@ export const REPORT: MeetingReport = {
   suggested_company_status: "Negotiation",
   suggested_status_reason:
     "Priya agreed a pilot and a revised go-live, which moves the deal past the proposal stage.",
-  model: "gpt-5.6-luna",
+  model: "claude-haiku-5-5",
   approved_at: null,
   updated_at: CREATED,
 };

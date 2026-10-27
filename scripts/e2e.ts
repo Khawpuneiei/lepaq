@@ -10,6 +10,9 @@
  * -> read the public page. It is the only way to test the route auth, the RLS
  * policies and the state machine together.
  *
+ * On the GPU jobs backend it waits for the job to report back, up to 15
+ * minutes; a cold GPU alone takes about 4.
+ *
  * The session is minted with the admin API and encoded into the cookie format
  * @supabase/ssr expects, so no password is involved anywhere.
  */
@@ -22,6 +25,8 @@ import { createClient } from "@supabase/supabase-js";
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const MAX_CHUNK = 3180;
+/** a cold GPU, a queue for one, and a long recording all fit inside this */
+const JOB_WAIT_MS = 15 * 60 * 1000;
 
 const file = process.argv.slice(2).find((a) => !a.startsWith("--"));
 if (!file) {
@@ -88,6 +93,31 @@ async function main() {
     ...init,
     headers: { ...(init.headers ?? {}), cookie, "Content-Type": "application/json" },
   });
+
+  /**
+   * Polls /status until a GPU job has reported back, or null after
+   * JOB_WAIT_MS. Against a local dev server the service's callback cannot
+   * reach localhost, so this poll is what moves the meeting on: /status asks
+   * the service about a job it has not heard from for two minutes.
+   */
+  async function waitForTranscript(id: string): Promise<{ status: string; error: string | null } | null> {
+    const deadline = Date.now() + JOB_WAIT_MS;
+    let lastNote = "";
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const res = await fetch(`${BASE}/api/meetings/${id}/status`, authed());
+      if (!res.ok) continue;
+      const body = await json(res);
+      if (body.progress_note && body.progress_note !== lastNote) {
+        lastNote = body.progress_note;
+        console.log(`   .. ${lastNote}`);
+      }
+      if (["awaiting_speakers", "review", "ready", "failed"].includes(body.status)) {
+        return { status: body.status, error: body.error ?? null };
+      }
+    }
+    return null;
+  }
 
   // ---- the route auth guard actually guards ------------------------------
   //
@@ -164,11 +194,18 @@ async function main() {
   }
   ok("uploaded", `${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB`);
 
-  // ---- 3. process, resuming as needed ------------------------------------
+  // ---- 3. process ---------------------------------------------------------
+  //
+  // On the GPU jobs backend /process queues one job for the whole recording
+  // and returns {queued:true}; the service reports back on its own, so this
+  // waits on /status instead of posting again. On the per-part backend
+  // /process returns {complete:false} when it runs out of function time, and
+  // posting again resumes.
   step("3. POST /api/meetings/[id]/process");
   const t0 = Date.now();
   let rounds = 0;
-  for (let i = 0; i < 12; i++) {
+  let transcribed = false;
+  for (let i = 0; i < 12 && !transcribed; i++) {
     rounds++;
     const res = await fetch(`${BASE}/api/meetings/${created.id}/process`, authed({ method: "POST" }));
     const body = await json(res);
@@ -177,13 +214,40 @@ async function main() {
       process.exit(1);
     }
     if (body.complete) {
-      ok("transcribed", `${body.segments} segments, ${body.total} part(s), chunked=${body.chunked}`);
+      ok(
+        "transcribed",
+        body.reused
+          ? `${body.segments} segments, from the transcript the GPU job already made`
+          : `${body.segments} segments, ${body.total} part(s), chunked=${body.chunked}`,
+      );
       ok("speakers proposed", `${body.speakers} labels`);
-      break;
+      transcribed = true;
+    } else if (body.queued) {
+      ok("GPU job queued", body.job_id);
+      const final = await waitForTranscript(created.id);
+      if (!final) {
+        bad(
+          "transcription",
+          `still transcribing after ${JOB_WAIT_MS / 60_000} minutes. The GPU job may yet finish; meeting ${created.id}`,
+        );
+        process.exit(1);
+      }
+      if (final.status === "failed") {
+        bad("transcription", final.error ?? "failed");
+        process.exit(1);
+      }
+      ok("transcribed on the GPU service", final.status);
+      transcribed = true;
+    } else {
+      console.log(`   .. resuming (${body.done}/${body.total} parts done)`);
     }
-    console.log(`   .. resuming (${body.done}/${body.total} parts done)`);
   }
   ok("process rounds", `${rounds} invocation(s) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  // analysing a meeting with no transcript would only fail it
+  if (!transcribed) {
+    bad("transcription", `not finished after ${rounds} rounds`);
+    process.exit(1);
+  }
 
   // ---- 4. status ---------------------------------------------------------
   step("4. GET /api/meetings/[id]/status");

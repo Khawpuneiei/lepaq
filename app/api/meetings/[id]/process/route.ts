@@ -28,9 +28,15 @@ const SOFT_DEADLINE_MS = 230_000;
 /**
  * Transcribe and diarize, then propose a speaker mapping.
  *
- * Safe to call repeatedly: work already done is stored per chunk, so a second
- * call resumes rather than restarting. That is what makes long recordings
- * survive the Vercel function ceiling without a queue or a worker.
+ * On the GPU jobs backend (the default) this only starts one job for the
+ * whole recording and returns {queued:true}; the result arrives through the
+ * callback or the status poll. A Retry reuses a transcript the job already
+ * made.
+ *
+ * On the per-part backend it does the work itself, and is safe to call
+ * repeatedly: work already done is stored per part, so a second call resumes
+ * rather than restarting. That is what makes long recordings survive the
+ * Vercel function ceiling there.
  */
 export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[id]/process">) {
   const started = Date.now();
@@ -151,9 +157,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
           .update({
             status: "done",
             segments: result.segments,
-            // only the self-hosted backend has voice embeddings; leaving the
-            // key out keeps the OpenAI path working before migration 0004
-            ...(Object.keys(result.speakers).length > 0 ? { speakers: result.speakers } : {}),
+            speakers: result.speakers,
             error: null,
             updated_at: new Date().toISOString(),
           })
@@ -208,15 +212,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
     }
 
     // ---- stitch ----------------------------------------------------------
-    // `speakers` exists only once migration 0004 has run, so ask for it only
-    // when the backend that fills it is on
-    const chunkColumns: string =
-      TRANSCRIBE_BACKEND === "whisperlah"
-        ? "chunk_index, segments, speakers"
-        : "chunk_index, segments";
     const { data } = await admin
       .from("transcription_chunks")
-      .select(chunkColumns)
+      .select("chunk_index, segments, speakers")
       .eq("meeting_id", id)
       .order("chunk_index", { ascending: true });
     const finished = (data ?? []) as unknown as {
@@ -233,13 +231,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
       admin,
       meeting,
       segments,
-      // only the self-hosted backend has a speaker_embeddings table to write to
-      embeddings:
-        TRANSCRIBE_BACKEND === "whisperlah"
-          ? finished.flatMap((c) =>
-              Object.entries(c.speakers ?? {}).map(([label, v]) => ({ label, ...v })),
-            )
-          : null,
+      embeddings: finished.flatMap((c) =>
+        Object.entries(c.speakers ?? {}).map(([label, v]) => ({ label, ...v })),
+      ),
       chunked: prepared.chunked,
     });
 
