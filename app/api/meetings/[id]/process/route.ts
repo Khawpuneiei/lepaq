@@ -12,7 +12,7 @@ import {
   type SpeakerEmbedding,
 } from "@/lib/ai/transcribe";
 import { finishTranscription } from "@/lib/pipeline/finishTranscription";
-import { JOB_TIMEOUT_MS, startTranscriptionJob } from "@/lib/asr/jobs";
+import { processWithJob } from "@/lib/asr/jobs";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -45,6 +45,16 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
     if (meeting.status === "review" || meeting.status === "ready") {
       throw new ApiError("This meeting has already been analysed.", 409);
     }
+
+    // ---- whole-file job on the GPU service ---------------------------------
+    // Nothing is downloaded or split here: the service fetches the audio from
+    // a signed URL and reports back to /api/transcription/callback. Calling
+    // this again while a job is in flight does not start a second one, and a
+    // Retry after a later step failed reuses the transcript it already made.
+    if (TRANSCRIBE_BACKEND === "jobs") {
+      return NextResponse.json(await processWithJob(admin, meeting));
+    }
+
     if (!meeting.audio_path) {
       throw new ApiError("No audio was uploaded for this meeting.", 400);
     }
@@ -53,35 +63,6 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
         "The audio for this meeting has been deleted, so it cannot be transcribed again.",
         410,
       );
-    }
-
-    // ---- whole-file job on the GPU service ---------------------------------
-    // Nothing is downloaded or split here: the service fetches the audio from
-    // a signed URL and reports back to /api/transcription/callback. Calling
-    // this again while a job is in flight does not start a second one.
-    if (TRANSCRIBE_BACKEND === "jobs") {
-      const { data: open } = await admin
-        .from("transcription_jobs")
-        .select("id, created_at")
-        .eq("meeting_id", id)
-        .in("status", ["queued", "running"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      // status first: a callback only carries a meeting that is transcribing
-      await admin
-        .from("meetings")
-        .update({ status: "transcribing", error: null, progress_note: "Queued for transcription" })
-        .eq("id", id);
-
-      const inFlight =
-        open && Date.now() - new Date(open.created_at).getTime() < JOB_TIMEOUT_MS;
-      const jobId = inFlight
-        ? open.id
-        : await startTranscriptionJob(admin, { id, audio_path: meeting.audio_path });
-
-      return NextResponse.json({ complete: false, queued: true, job_id: jobId });
     }
 
     await admin

@@ -267,26 +267,47 @@ WHISPERLAH_MODE=room
 ```
 
 Vercel cannot reach `127.0.0.1`, so a deployed build needs the server behind
-a public URL with `WHISPERLAH_API_KEY` set. The model weights stay on the
+a public URL with `WHISPERLAH_TOKEN` set. The model weights stay on the
 serving machine and are never committed.
 
 ### Whole-file jobs on the GPU service
 
-`TRANSCRIBE_BACKEND=jobs` is the deployed shape of the same stack. `/process`
-no longer downloads or splits anything: it signs a 6-hour URL for the audio,
-records a row in `transcription_jobs` (migration `0005`), posts
-`{job_id, audio_url, callback_url, mode, num_speakers}` to `{ASR_URL}/jobs`,
-and returns. The service transcribes the whole recording in one request, so
-speaker A is the same person all meeting and the 300 s function limit no
-longer applies, then POSTs the result to `/api/transcription/callback`.
+`TRANSCRIBE_BACKEND=jobs` is the deployed shape of the same stack, served
+from Modal. Three settings, all set in Vercel:
 
-- The callback is signed: `X-Lepaq-Signature: v1=<HMAC-SHA256(ASR_CALLBACK_SECRET, "{timestamp}.{raw body}")>`,
+| Variable | What it is |
+|---|---|
+| `WHISPERLAH_URL` | base URL of the Modal app; `/jobs` and `/jobs/{id}` are appended |
+| `WHISPERLAH_TOKEN` | bearer token the service expects on both |
+| `CALLBACK_SECRET` | shared secret the service signs its callbacks with |
+
+`/process` no longer downloads or splits anything: it signs a 6-hour URL for
+the audio, records a row in `transcription_jobs` (migration `0005`), posts
+`{job_id, audio_url, callback_url, mode, num_speakers}` to
+`{WHISPERLAH_URL}/jobs`, and returns. The service transcribes the whole
+recording in one request, so speaker A is the same person all meeting and the
+300 s function limit no longer applies, then POSTs the result to
+`/api/transcription/callback`.
+
+- The GPU scales to zero when idle, so the first job after a quiet spell
+  waits about a minute for it to start. The processing screen and the meeting
+  page say "Waiting for the GPU to start" meanwhile, then "Transcribing" once
+  the service reports the job running.
+- The callback is signed: `X-Lepaq-Signature: v1=<hex HMAC-SHA256(CALLBACK_SECRET, "{timestamp}.{raw body}")>`,
   checked in constant time against the raw body, with at most 300 s of clock
   skew. A repeated callback, or one for a job superseded by a Retry, does nothing.
-- If no callback arrives, `/status` (which the processing screen polls) asks
-  `GET {ASR_URL}/jobs/{id}` after 2 quiet minutes, and a daily Vercel cron
-  (`vercel.json`, `CRON_SECRET`) does the same for closed tabs. A job still
-  unfinished after an hour fails the meeting with a Retry button.
+- If no callback arrives, `/status` (which the processing screen and the
+  meeting page poll) asks `GET {WHISPERLAH_URL}/jobs/{id}` after 2 quiet
+  minutes, and a daily Vercel cron (`vercel.json`, `CRON_SECRET`) does the
+  same for closed tabs. A job still unfinished after two hours fails the
+  meeting with a Retry button; if its transcript turns up later anyway, the
+  meeting picks it back up.
+- The transcript is kept on the job row until the meeting is analysed. A
+  Retry after speaker mapping or analysis failed starts from it, without the
+  GPU and without the audio. If saving it is cut off part way (a function
+  timeout), the meeting fails after 6 minutes and Retry resumes the same way.
+- One open job per meeting (a unique index), so a double-clicked Retry cannot
+  pay for two. Users can read their jobs but not write them.
 - Everything after the transcript (speaker mapping, embeddings, audio
   deletion) is `lib/pipeline/finishTranscription.ts`, shared with the chunked path.
 

@@ -94,6 +94,16 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
       .eq("meeting_id", id)
       .eq("status", "done");
 
+    // Same for the copy a GPU job kept so a failed step could be retried
+    // without transcribing again.
+    if (TRANSCRIBE_BACKEND === "jobs") {
+      await admin
+        .from("transcription_jobs")
+        .update({ result: null })
+        .eq("meeting_id", id)
+        .not("result", "is", null);
+    }
+
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     await admin

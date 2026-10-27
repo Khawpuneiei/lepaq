@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { apiError, requireOwnedMeeting, requireUser } from "@/lib/api";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { reconcileJob } from "@/lib/asr/jobs";
+import { reconcileMeeting } from "@/lib/asr/jobs";
+import { TRANSCRIBE_BACKEND } from "@/lib/ai/transcribe";
 
 export const runtime = "nodejs";
 // a quiet GPU job that turns out to be done is carried on to speaker mapping here
@@ -16,24 +17,15 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/meetings/[i
     const user = await requireUser();
     const meeting = await requireOwnedMeeting(id, user.id);
 
-    // A GPU job that has gone quiet is asked about here, so an open
-    // processing screen keeps things moving even if a callback was lost.
-    if (meeting.status === "transcribing") {
-      const admin = createAdminClient();
-      const { data: job } = await admin
-        .from("transcription_jobs")
-        .select("id, meeting_id, created_at, checked_at")
-        .eq("meeting_id", id)
-        .in("status", ["queued", "running"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (job) {
-        try {
-          await reconcileJob(admin, job);
-        } catch (err) {
-          console.warn("[status] reconcile failed", job.id, err);
-        }
+    // A GPU job that has gone quiet is asked about here, so an open page
+    // keeps things moving even if a callback was lost.
+    let current = meeting;
+    if (meeting.status === "transcribing" && TRANSCRIBE_BACKEND === "jobs") {
+      try {
+        await reconcileMeeting(createAdminClient(), id);
+        current = await requireOwnedMeeting(id, user.id);
+      } catch (err) {
+        console.warn("[status] reconcile failed", id, err);
       }
     }
 
@@ -44,9 +36,9 @@ export async function GET(_request: Request, ctx: RouteContext<"/api/meetings/[i
       .eq("meeting_id", id);
 
     return NextResponse.json({
-      status: meeting.status,
-      progress_note: meeting.progress_note,
-      error: meeting.error,
+      status: current.status,
+      progress_note: current.progress_note,
+      error: current.error,
       chunks: {
         done: (chunks ?? []).filter((c) => c.status === "done").length,
         total: (chunks ?? []).length,

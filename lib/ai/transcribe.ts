@@ -115,7 +115,8 @@ interface WhisperLahResponse {
  * namespaces the labels and shifts timestamps like the OpenAI path does.
  *
  *  - `WHISPERLAH_URL`      e.g. http://127.0.0.1:8765 (required for this backend)
- *  - `WHISPERLAH_API_KEY`  sent as a bearer token when the server was started with one
+ *  - `WHISPERLAH_TOKEN`    sent as a bearer token when the server was started with one
+ *                         (`WHISPERLAH_API_KEY`, the older name, still works)
  *  - `WHISPERLAH_MODE`     "room" (default, everyone in the room) or "near" (lapel mic wearer only)
  */
 async function transcribePartWhisperLah(
@@ -135,9 +136,8 @@ async function transcribePartWhisperLah(
   form.append("diarize", "true");
 
   const headers: Record<string, string> = {};
-  if (process.env.WHISPERLAH_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.WHISPERLAH_API_KEY}`;
-  }
+  const token = process.env.WHISPERLAH_TOKEN || process.env.WHISPERLAH_API_KEY;
+  if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${base.replace(/\/$/, "")}/transcribe`, {
     method: "POST",

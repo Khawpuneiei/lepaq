@@ -110,12 +110,23 @@ async function callOnce<T>(
   }
 }
 
+/** `error.type` values of an error event sent mid-stream, after the 200 */
+const TRANSIENT_STREAM_ERRORS = new Set(["overloaded_error", "api_error", "rate_limit_error"]);
+
 function isFallbackWorthy(err: unknown): boolean {
   if (err instanceof FallbackWorthy) return true;
+  if (err instanceof Anthropic.APIUserAbortError) return false;
   // the SDK has already retried these twice
   if (err instanceof Anthropic.RateLimitError) return true;
   if (err instanceof Anthropic.InternalServerError) return true; // 5xx, including 529 overloaded
   if (err instanceof Anthropic.APIConnectionError) return true;
+  // A stream can fail after its 200: an error event arrives as an APIError
+  // with no status, and a dropped connection as a plain AnthropicError
+  // ("terminated"). The SDK does not retry either.
+  if (err instanceof Anthropic.APIError) {
+    return err.status === undefined && TRANSIENT_STREAM_ERRORS.has(err.type ?? "");
+  }
+  if (err instanceof Anthropic.AnthropicError) return true;
   return false;
 }
 

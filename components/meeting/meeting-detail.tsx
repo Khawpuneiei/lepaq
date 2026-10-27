@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -106,6 +106,80 @@ export function MeetingDetail({
   const [regenerating, setRegenerating] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<"audio" | "meeting" | null>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  // While the meeting is still being worked on, ask how it is going. For a
+  // GPU job this poll is also what notices a lost callback (see /status).
+  const inProgress = ["uploaded", "transcribing", "analyzing"].includes(meeting.status);
+  useEffect(() => {
+    if (!inProgress) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/meetings/${meeting.id}/status`);
+        if (res.ok && !stopped) {
+          const body = await res.json();
+          setMeeting((m) => ({
+            ...m,
+            status: body.status,
+            progress_note: body.progress_note,
+            error: body.error,
+          }));
+          // the transcript and report are server props, so fetch them now
+          if (!["uploaded", "transcribing", "analyzing"].includes(body.status)) {
+            router.refresh();
+            return;
+          }
+        }
+      } catch {
+        // a dropped poll is not worth surfacing; the next one will land
+      }
+      if (!stopped) timer = setTimeout(poll, 15_000);
+    };
+    timer = setTimeout(poll, 5_000);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [inProgress, meeting.id, router]);
+
+  /**
+   * Retry from a failed state. A GPU job comes back at once as queued and the
+   * poll above takes it from there; the chunked path is resumed here, the
+   * same way the new-meeting screen does it.
+   */
+  async function retry() {
+    setRetrying(true);
+    setMeeting((m) => ({ ...m, status: "transcribing", error: null, progress_note: "Retrying" }));
+    try {
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const res = await fetch(`/api/meetings/${meeting.id}/process`, { method: "POST" });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? "Retry failed.");
+        if (body.complete) {
+          setMeeting((m) => ({ ...m, status: "awaiting_speakers", progress_note: null }));
+          router.refresh();
+          return;
+        }
+        if (body.queued) {
+          toast.success("Sent for transcription.");
+          return;
+        }
+        setMeeting((m) => ({
+          ...m,
+          progress_note: `Transcribed ${body.done ?? 0} of ${body.total ?? 0} parts`,
+        }));
+      }
+      throw new Error("This recording is taking more attempts than expected. Press Retry again.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Retry failed.";
+      setMeeting((m) => ({ ...m, status: "failed", error: message, progress_note: null }));
+      toast.error(message);
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   function jumpToEvidence(idx: number) {
     setTab("transcript");
@@ -302,21 +376,7 @@ export function MeetingDetail({
           <p className="mt-2 text-sm text-on-danger-soft/90">
             {meeting.error ?? "Something went wrong."}
           </p>
-          <Button
-            className="mt-4"
-            variant="outline"
-            onClick={async () => {
-              const res = await fetch(`/api/meetings/${meeting.id}/process`, {
-                method: "POST",
-              });
-              if (res.ok) {
-                toast.success("Retrying.");
-                router.refresh();
-              } else {
-                toast.error((await res.json()).error ?? "Retry failed.");
-              }
-            }}
-          >
+          <Button className="mt-4" variant="outline" onClick={retry} disabled={retrying}>
             <RotateCcw className="size-4" />
             Retry
           </Button>
