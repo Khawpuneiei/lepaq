@@ -8,16 +8,19 @@ import path from "node:path";
 import ffmpegPath from "ffmpeg-static";
 
 /**
- * Long-audio support.
+ * Long-audio support for the per-part backend (TRANSCRIBE_BACKEND=whisperlah).
+ * The GPU jobs backend sends the whole recording in one job and never comes
+ * here.
  *
  * The spec left chunking on the roadmap and capped uploads at 25MB. Instead we
  * accept up to the Supabase object limit and deal with length here.
  *
  * Two separate ceilings drive the decision, and they are not the same thing:
  *
- *   size — OpenAI refuses an audio upload over 25MB. Re-encoding to mono
- *          16kHz 48kbps MP3 costs ~6KB/s, so an hour of speech is ~21MB.
- *          Compression alone rescues most real meetings.
+ *   size — each request stays under CHUNK_TARGET_BYTES (20MB). Re-encoding to
+ *          mono 16kHz 48kbps MP3 costs ~6KB/s, so 20MB holds just under an
+ *          hour, and anything short enough for one request fits once
+ *          re-encoded.
  *
  *   time — a Vercel function dies at 300s. A single 90-minute transcription
  *          request can outlive that even though the file would have fit. So
@@ -35,7 +38,7 @@ const BYTES_PER_SECOND = 6_000;
 
 /**
  * Above this, transcribe in parallel parts rather than one request, so no
- * single OpenAI call has to finish inside the remaining function budget.
+ * single call has to finish inside the remaining function budget.
  */
 export const SINGLE_REQUEST_MAX_SECONDS = 1_500; // 25 minutes
 
@@ -272,8 +275,8 @@ export async function prepareAudio(
 
     // ffmpeg's segmenter reliably emits a trailing fragment of a few hundred
     // bytes when the duration divides evenly. Transcribing it would cost a
-    // request, return nothing, and OpenAI rejects audio this short anyway —
-    // so drop anything under a second and renumber around it.
+    // request and return nothing, so drop anything under a second and
+    // renumber around it.
     if (length < 1 || size < 2_048) continue;
 
     parts.push({

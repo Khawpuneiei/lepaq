@@ -86,7 +86,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
     const result = await runAnalysis(admin, id, user.id);
 
     // Each chunk kept its own copy of its segments so a run that hit the
-    // function ceiling could resume without re-paying OpenAI. That copy has
+    // function ceiling could resume without transcribing again. That copy has
     // done its job: the transcript is in transcript_segments, the speakers are
     // confirmed, and /process refuses to run again once a meeting reaches
     // 'review'. Keeping it would leave a duplicate transcript in the database
@@ -97,7 +97,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
     await admin
       .from("transcription_chunks")
       // the voice embeddings parked here are in speaker_embeddings by now too
-      .update(TRANSCRIBE_BACKEND === "whisperlah" ? { segments: [], speakers: {} } : { segments: [] })
+      .update({ segments: [], speakers: {} })
       .eq("meeting_id", id)
       .eq("status", "done");
 

@@ -5,10 +5,11 @@
  *                         [--participants "Sarah Johnson:AE:me,Mr Tan:COO"]
  *                         [--title "..."] [--note "..."]
  *
- * This exercises exactly the code the /process and /analyze routes call —
+ * This exercises the code the per-part /process path and /analyze call —
  * prepareAudio, transcribePart, stitchTranscripts, mapSpeakers,
- * computeTalkRatio, analyzeMeeting — so a pass here means the OpenAI half of
- * the app works. It writes nothing, which makes it usable before the Supabase
+ * computeTalkRatio, analyzeMeeting — so a pass here means transcription on a
+ * WhisperLah server (WHISPERLAH_URL, with /transcribe) and both Claude calls
+ * work. It writes nothing, which makes it usable before the Supabase
  * migration has been applied.
  */
 
@@ -105,7 +106,7 @@ async function main() {
 
   try {
     // ---- 2. transcribe ---------------------------------------------------
-    rule("2. TRANSCRIBE + DIARIZE  (gpt-4o-transcribe-diarize)");
+    rule("2. TRANSCRIBE + DIARIZE  (WhisperLah)");
     const t0 = Date.now();
     const results: PartTranscript[] = [];
 
@@ -172,7 +173,7 @@ async function main() {
   }
 }
 
-/** Everything after transcription: the two gpt-5.6-luna calls. */
+/** Everything after transcription: the two Claude calls. */
 async function runLlmStages(
   segments: RawSegment[],
   durationSec: number,
@@ -185,7 +186,7 @@ async function runLlmStages(
 
   {
     // ---- 3. map speakers -------------------------------------------------
-    rule("3. SPEAKER MAPPING  (gpt-5.6-luna, call A)");
+    rule("3. SPEAKER MAPPING  (Claude, call A)");
     const proposals = await mapSpeakers({
       title: flag("title") ?? path.basename(file!),
       shortNote: flag("note") ?? null,
@@ -236,7 +237,7 @@ async function runLlmStages(
     }
 
     // ---- 4. analyse ------------------------------------------------------
-    rule("4. ANALYSIS  (gpt-5.6-luna, call B)");
+    rule("4. ANALYSIS  (Claude, call B)");
     const t1 = Date.now();
     const { analysis, model } = await analyzeMeeting({
       title: flag("title") ?? path.basename(file!),

@@ -103,11 +103,15 @@ export function NewMeetingWizard({
   /**
    * Drives the whole pipeline from the browser.
    *
-   * The resume loop is the part worth understanding: a long recording is split
-   * server-side, and /process returns {complete:false} when it runs out of
-   * function time rather than failing. Calling it again picks up the chunks
-   * that are still pending, so a 90-minute meeting finishes across however
-   * many invocations it needs without a queue or a background worker.
+   * On the GPU jobs backend (the default), /process sends the whole recording
+   * to the GPU service as one job and returns {queued:true}; the service
+   * reports back on its own, so the wizard waits on the status poll.
+   *
+   * On the per-part backend a long recording is split server-side, and
+   * /process returns {complete:false} when it runs out of function time
+   * rather than failing. Calling it again picks up the parts that are still
+   * pending, so a 90-minute meeting finishes across however many invocations
+   * it needs.
    */
   async function submit() {
     if (!picked) return;
@@ -171,7 +175,7 @@ export function NewMeetingWizard({
       setUploading(false);
       step = "transcribing";
 
-      // 3. transcribe, resuming until every chunk is done
+      // 3. transcribe: wait for the GPU job, or resume until every part is done
       const polled = pollStatus(created.id);
 
       for (let attempt = 0; attempt < 12; attempt++) {
@@ -299,8 +303,8 @@ export function NewMeetingWizard({
         <section>
           <h2 className="mb-1 font-display text-2xl">Add the recording</h2>
           <p className="mb-5 text-sm text-muted-foreground">
-            Audio only. Long recordings are fine — they get split up and
-            transcribed in parallel.
+            Audio only. Long recordings are fine — they just take a few
+            minutes more to transcribe.
           </p>
           <UploadDropzone
             value={picked}

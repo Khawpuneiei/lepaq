@@ -2,9 +2,9 @@
  * Smoke test for the long-audio splitter.  Run with:  npm run check:audio
  *
  * Worth having because this is the one part of the pipeline that cannot be
- * exercised without an OpenAI key and a real recording. It generates synthetic
- * audio with ffmpeg and checks the three paths through prepareAudio:
- * sent as-is, compressed into one request, and split into parts.
+ * exercised without a transcription server and a real recording. It
+ * generates synthetic audio with ffmpeg and checks the three paths through
+ * prepareAudio: sent as-is, compressed into one request, and split into parts.
  *
  * It also verifies the property everything downstream depends on: that the
  * parts tile the timeline with no gaps, so a stitched transcript has one
