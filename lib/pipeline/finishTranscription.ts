@@ -128,13 +128,15 @@ export async function finishTranscription(args: {
   // ---- audio retention --------------------------------------------------
   // Everything downstream works from the transcript, so once we are here the
   // recording itself is no longer needed. Spec 9 barrier 1.
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("delete_audio_after_processing")
-    .eq("id", meeting.owner_id)
-    .maybeSingle();
+  //
+  // The owner is read now, not taken from the start: a guest who continued
+  // with Google meanwhile belongs to the Google account, and the guest's
+  // profile is gone. A read that fails keeps the audio (it can still be
+  // deleted by hand); only an owner with no profile at all, twice over,
+  // gets the default (delete).
+  const deleteAudio = await ownerWantsAudioDeleted(admin, id);
 
-  if (profile?.delete_audio_after_processing && meeting.audio_path) {
+  if (deleteAudio && meeting.audio_path) {
     await admin.storage.from(AUDIO_BUCKET).remove([meeting.audio_path]);
     await admin
       .from("meetings")
@@ -148,4 +150,26 @@ export async function finishTranscription(args: {
     .eq("id", id);
 
   return { segments: segments.length, speakers: proposals.length };
+}
+
+async function ownerWantsAudioDeleted(admin: SupabaseClient, meetingId: string): Promise<boolean> {
+  // twice: a move from a guest can land between reading the owner and
+  // reading their profile
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { data: current, error: meetingError } = await admin
+      .from("meetings")
+      .select("owner_id")
+      .eq("id", meetingId)
+      .maybeSingle();
+    if (meetingError || !current) return false;
+
+    const { data: profile, error: profileError } = await admin
+      .from("profiles")
+      .select("delete_audio_after_processing")
+      .eq("id", current.owner_id)
+      .maybeSingle();
+    if (profileError) return false;
+    if (profile) return profile.delete_audio_after_processing !== false;
+  }
+  return true;
 }

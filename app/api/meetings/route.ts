@@ -3,6 +3,8 @@ import { z } from "zod";
 
 import { ApiError, apiError, requireUser } from "@/lib/api";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { assertGuestMayStart, isGuest } from "@/lib/auth/guest";
 import { AUDIO_BUCKET, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/constants";
 import { findOrCreateCompany } from "@/lib/people";
 
@@ -55,6 +57,9 @@ export async function POST(request: Request) {
       );
     }
     const body = parsed.data;
+
+    // before the upload, so a guest who has used their meeting is told now
+    if (isGuest(user)) await assertGuestMayStart(createAdminClient(), user);
 
     if (body.size > MAX_UPLOAD_BYTES) {
       throw new ApiError(

@@ -7,12 +7,15 @@ import { readEnv } from "@/lib/env";
 /**
  * Service-role client. Bypasses RLS entirely.
  *
- * Only three things may use it, and each one re-checks ownership itself:
+ * Only four things may use it, and each one re-checks ownership itself:
  *   1. the processing pipeline, which downloads audio and writes AI output
  *      on behalf of a user whose session is not in scope;
  *   2. the public /s/[token] share page, which has no session at all and
  *      returns a hand-picked list of approved fields;
- *   3. scripts/seed.ts.
+ *   3. guest accounts (lib/auth/guest.ts): the limits, which read and write
+ *      only the signed-in guest's own row of guest_meetings, and moving a
+ *      guest into the Google account the same browser just signed in with;
+ *   4. scripts/seed.ts.
  *
  * The "server-only" import above makes a client-side import a build error
  * rather than a leaked key.

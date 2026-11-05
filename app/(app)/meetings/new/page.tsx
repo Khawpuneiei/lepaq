@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 
 import { NewMeetingWizard } from "@/components/meeting/new-meeting-wizard";
+import { GuestMeetingUsed } from "@/components/layout/guest-meeting-used";
+import { guestCanStartMeeting, isGuest } from "@/lib/auth/guest";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "New meeting · Lepaq" };
@@ -14,6 +16,12 @@ export default async function NewMeetingPage({ searchParams }: PageProps<"/meeti
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // Say so before anyone records a meeting that could not be processed: the
+  // way on is Continue with Google, which leaves this page and anything on it
+  if (isGuest(user) && !(await guestCanStartMeeting(user.id))) {
+    return <GuestMeetingUsed />;
+  }
 
   const [{ data: companies }, { data: people }, { data: profile }] = await Promise.all([
     supabase

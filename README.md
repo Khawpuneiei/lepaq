@@ -33,7 +33,9 @@ The app will not do anything useful until Supabase is set up.
    - `0002` and `0003` stop duplicate people and companies, and add the
      person-fact categories and the user's own Table of Interest columns;
    - `0004` and `0005` add the speaker embeddings and the GPU job table that
-     transcription writes to.
+     transcription writes to;
+   - `0006` adds the guest limits and the move from a guest to a Google
+     account (see **Google and guest sign-in** below).
 
    Run each once. A later file changes some things an earlier one set up,
    so running an older file again on its own can undo them. Once
@@ -62,7 +64,85 @@ rejected by these models).
 
 Transcription is separate: see **Whole-file jobs on the GPU service** below.
 
-### 3. Signing in during development
+### 3. Google and guest sign-in
+
+The login page offers **Continue with Google**, email and password, and
+**Continue as guest**. Google and guests each need switching on in Supabase;
+until they are, their buttons say which setting is off.
+
+**Google**
+
+1. Google Cloud console → APIs & Services → Credentials → Create credentials
+   → OAuth client ID, type *Web application*. If it asks for a consent
+   screen first, make one (External, the app's name and a support email).
+   Under *Authorized redirect URIs* add
+   `https://<project-ref>.supabase.co/auth/v1/callback`; Supabase shows the
+   exact URL on its Google provider page.
+2. Supabase → Authentication → Sign In / Providers → Google: turn it on and
+   paste the client ID and client secret.
+3. Supabase → Authentication → URL Configuration → Redirect URLs: add
+   `http://localhost:3000/**` and `https://<your-domain>/**`, plus your
+   Vercel preview pattern if you sign in on previews. Use the `/**` form:
+   the app comes back to `/auth/callback?next=…`, and an exact entry does not
+   match a URL with a query string.
+
+**Guests**
+
+1. Supabase → Authentication → Sign In / Providers: turn on **Allow
+   anonymous sign-ins**.
+2. Leave **Allow manual linking** off. Lepaq does not need it, and with it
+   on anyone can attach someone else's Google account to an account they
+   control, by sending them a link.
+3. Keep **Confirm email** on (Sign In / Providers → Email). With it off,
+   anyone can sign up with someone else's email and a password of their
+   choosing, and when the owner of that email later signs in with Google,
+   Supabase signs them into that account. Lepaq never moves a guest into an
+   account that has a password, but the sign-in itself would still land
+   there.
+4. Run `0006_guest_meetings.sql`.
+
+A guest is a Supabase anonymous user. It may process one meeting
+(`GUEST_MEETING_LIMIT` in `lib/constants.ts`; 0 lets guests look around
+only), with a few tries at each paid step: `GUEST_TRANSCRIBE_RUNS` calls to
+`/process` that start GPU work or reuse a stored transcript, and
+`GUEST_ANALYSIS_RUNS` Claude reports from `/analyze` and `/regenerate`. A
+job the GPU service turns down is not counted, and once the reports are used
+up `/process` refuses too. The server counts them in `guest_meetings`, which
+only the service role can touch, so deleting the meeting or resetting its
+status does not buy more. Members are never counted.
+
+*Continue with Google to keep it* is an ordinary Google sign-in from the
+same browser. When it comes back, `/auth/callback` moves everything the guest
+made into the Google account and deletes the guest (`rapport_adopt_guest`).
+The account's own statuses and Table of Interest columns stay; the guest's
+are merged in by name. If that Google account already has meetings,
+companies or people of its own, or a password, nothing moves and the person
+stays the guest, with a page that explains their choice. A guest has no way back in after signing out, so the app asks
+before it does.
+
+Anyone can make a guest. Supabase allows 30 anonymous sign-ins an hour from
+one IP address (Authentication → Rate Limits). Turning on CAPTCHA would need
+a CAPTCHA widget on the login page first; without one, sign-in stops
+working. Old guests are not removed on their own; this deletes guests older
+than 30 days and everything they made:
+
+```sql
+delete from auth.users u
+where u.is_anonymous is true
+  and u.created_at < now() - interval '30 days'
+  -- Supabase refuses to delete a user who still owns a stored file
+  and not exists (
+    select 1 from storage.objects o
+    where o.owner = u.id or o.owner_id = u.id::text
+  );
+```
+
+A guest it skips still has audio in the `meeting-audio` bucket, in a folder
+named by their user id (usually an upload that was never processed, since
+audio is deleted after processing by default). Delete that folder in Storage
+and run it again.
+
+### 4. Signing in during development
 
 If the owner account has no password set, or you would rather not type one
 thirty times a day, put this in `.env.local`:
@@ -84,7 +164,7 @@ from the page, an anonymous request is bounced to `/login`, and an
 *authenticated* request — where the proxy does let it through — gets a 404
 from the route itself.
 
-### 4. Demo data
+### 5. Demo data
 
 ```bash
 npm run seed
@@ -435,7 +515,8 @@ advice before putting real customer data in it. This is not legal advice.
 4. **Supabase URL config** — Authentication → URL Configuration. Set Site URL
    to your deployed domain and add `https://<your-domain>/**` to Redirect
    URLs, or login redirects break in production. Update `NEXT_PUBLIC_APP_URL`
-   to match, since the share dialog builds links from it.
+   to match, since the share dialog builds links from it. Google and guest
+   sign-in need the settings in **Google and guest sign-in** above.
 
 **Function size.** `ffmpeg-static` is around 78MB on Linux. `next.config.ts`
 traces that one binary into the `/process` function; ffprobe is not shipped
@@ -453,6 +534,7 @@ Hobby is for non-commercial use. Fine for demos and user interviews.
 app/
   (app)/          dashboard, meetings, people, companies, follow-ups, settings
   (auth)/login
+  auth/callback    where Google sends people back; auth/error explains a failure
   api/meetings/   create, process, status, analyze, approve, share, audio, regenerate
   api/transcription/callback   where the GPU service reports a finished job
   api/cron/transcription-jobs  daily sweep for jobs whose callback never came
@@ -466,7 +548,7 @@ lib/
   pipeline/       finishTranscription (after any transcript), runAnalysis (analyze, regenerate)
   supabase/       client (browser), server (RSC), admin (service role)
 docs/             architecture.png
-supabase/migrations/  0001-0005, run in order
+supabase/migrations/  0001-0006, run in order
 scripts/          preflight, e2e, try-pipeline, seed, check-audio
 proxy.ts          auth guard — Next 16 renamed middleware to proxy
 ```

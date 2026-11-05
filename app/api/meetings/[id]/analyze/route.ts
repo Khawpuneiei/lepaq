@@ -5,6 +5,7 @@ import { ApiError, apiError, friendlyError, requireOwnedMeeting, requireUser } f
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAnalysis } from "@/lib/pipeline/runAnalysis";
 import { TRANSCRIBE_BACKEND } from "@/lib/ai/transcribe";
+import { chargeGuest, GuestRefusal } from "@/lib/auth/guest";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -41,6 +42,9 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
   try {
     const user = await requireUser();
     await requireOwnedMeeting(id, user.id);
+    // a guest can write a transcript straight through RLS, so the Claude
+    // report is counted against their one meeting too, not only the GPU step
+    await chargeGuest(admin, user, id, "analyze");
 
     const parsed = Body.safeParse(await request.json());
     if (!parsed.success) throw new ApiError("Invalid speaker mapping.", 422);
@@ -83,7 +87,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
         .eq("id", p.id);
     }
 
-    const result = await runAnalysis(admin, id, user.id);
+    const result = await runAnalysis(admin, id);
 
     // Each chunk kept its own copy of its segments so a run that hit the
     // function ceiling could resume without transcribing again. That copy has
@@ -113,10 +117,13 @@ export async function POST(request: Request, ctx: RouteContext<"/api/meetings/[i
 
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    await admin
-      .from("meetings")
-      .update({ status: "failed", error: friendlyError(err), progress_note: null })
-      .eq("id", id);
+    // a guest over the limit is told so; the meeting stays as it was
+    if (!(err instanceof GuestRefusal)) {
+      await admin
+        .from("meetings")
+        .update({ status: "failed", error: friendlyError(err), progress_note: null })
+        .eq("id", id);
+    }
     return apiError(err);
   }
 }

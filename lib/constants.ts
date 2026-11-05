@@ -37,6 +37,22 @@ export const MAX_UPLOAD_MB = Number(
 );
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
+/**
+ * Meetings a guest (a Supabase anonymous user) may process before continuing
+ * with Google: 1, enforced by lib/auth/guest.ts, or 0 to let guests look
+ * around only. Here rather than there so the sign-in copy can say it.
+ */
+export const GUEST_MEETING_LIMIT: 0 | 1 = 1;
+
+/**
+ * Tries a guest gets at each paid step of that one meeting, counted by the
+ * server (migration 0006): /process calls that start GPU work or reuse a
+ * stored transcript, and Claude reports from /analyze and /regenerate. Enough
+ * for a Retry or two and a few regenerations after fixing speakers.
+ */
+export const GUEST_TRANSCRIBE_RUNS = 5;
+export const GUEST_ANALYSIS_RUNS = 5;
+
 /** Above this, the per-part backend re-encodes or splits the audio before sending it. */
 export const CHUNK_TARGET_BYTES = 20 * 1024 * 1024;
 

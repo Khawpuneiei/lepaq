@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { guestCanStartMeeting, isGuest } from "@/lib/auth/guest";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -12,14 +13,19 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // proxy.ts already redirects, but a layout must not assume it ran.
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const guest = isGuest(user);
+  const [{ data: profile }, canStart] = await Promise.all([
+    supabase.from("profiles").select("full_name").eq("id", user.id).maybeSingle(),
+    guest ? guestCanStartMeeting(user.id) : true,
+  ]);
 
   return (
-    <AppShell name={profile?.full_name ?? ""} email={user.email ?? ""}>
+    <AppShell
+      name={profile?.full_name ?? ""}
+      email={user.email ?? ""}
+      isGuest={guest}
+      guestCanStartMeeting={canStart}
+    >
       {children}
     </AppShell>
   );

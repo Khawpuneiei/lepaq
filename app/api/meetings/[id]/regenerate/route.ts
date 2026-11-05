@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { ApiError, apiError, friendlyError, requireOwnedMeeting, requireUser } from "@/lib/api";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { runAnalysis } from "@/lib/pipeline/runAnalysis";
+import { chargeGuest, GuestRefusal } from "@/lib/auth/guest";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -35,14 +36,19 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
         409,
       );
     }
+    // a guest's Claude reports are counted, as in /analyze
+    await chargeGuest(admin, user, id, "analyze");
 
-    const result = await runAnalysis(admin, id, user.id);
+    const result = await runAnalysis(admin, id);
     return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    await admin
-      .from("meetings")
-      .update({ status: "failed", error: friendlyError(err), progress_note: null })
-      .eq("id", id);
+    // a guest over the limit is told so; the meeting stays as it was
+    if (!(err instanceof GuestRefusal)) {
+      await admin
+        .from("meetings")
+        .update({ status: "failed", error: friendlyError(err), progress_note: null })
+        .eq("id", id);
+    }
     return apiError(err);
   }
 }
