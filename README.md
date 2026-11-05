@@ -375,12 +375,30 @@ holds it.
 needs a sign-in. Signed-in or not, "Open Lepaq" goes to `/dashboard`, and the
 proxy sends a signed-out visitor through `/login?next=/dashboard`.
 
-The opening is one sample line from a coffee chat, "Send the proposal by
-Friday, can?". Its demo (`components/landing/hero.tsx`) is local state only:
-Heard → Review → Kept, with the task, the date and the contact lifting out
-of the spoken line into the draft follow-up, then filing onto the person.
-Jamie Tan and Harbour Studio are made up, and the page says so wherever they
-appear. With reduced motion on, each state switches without the flight.
+The page is one scroll story (`components/landing/story.tsx`) that follows a
+single sample line from a coffee chat, "Send the proposal by Friday, can?".
+A sticky stage holds three scenes (the spoken line, the transcript and report,
+the person's page) while four chapters scroll past: Written down, Drafted,
+Your call, Remembered. Each chapter names the real meeting states it covers
+(`transcribing → awaiting_speakers`, `analyzing → review`, `review → ready`).
+On desktop the chapters sit in the stage's left column; below 1024px the stage
+pins to the top and the chapters scroll under it.
+
+Each step forward plays on the stage: the line settles into the transcript,
+the task, the date and the person lift out of it into the draft, approving
+stamps the report, and the follow-up files onto Jamie's page. The flights
+(`components/landing/motion.ts`) move a copy of each phrase on a short arc
+with the Web Animations API while the real one waits, invisible, where it
+lands. Scrolling back plays the first and last flights in reverse and fades
+the rest. Jumping several chapters at once, from the rail, a link or a reload
+on `#chapter-approved`, switches straight to the right state. With reduced
+motion on there are no flights, only the state changes. The stage is hidden
+from screen readers; each chapter carries a short text version of what it
+shows, and "Skip the story" goes to the benchmark.
+
+Everything here is local state and saves nothing. Jamie Tan and Harbour Studio
+are made up, and the page says so wherever they appear. The sections after the
+story fade in once, when scrolled to (`components/landing/reveal.tsx`).
 
 The WhisperLah numbers in `components/landing/sections.tsx` are copied from
 the WhisperLah README results table. Update them in the same commit as that
