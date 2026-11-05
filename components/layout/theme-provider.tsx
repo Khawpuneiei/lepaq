@@ -10,10 +10,13 @@ import type { ReactNode } from "react";
  * it reads.
  */
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // The /demo walkthrough is a film of the deck-matched light theme. Forcing
-  // it here, rather than calling setTheme, leaves the viewer's saved choice
-  // alone for the rest of the app.
-  const forcedTheme = usePathname().startsWith("/demo") ? "light" : undefined;
+  // The /demo walkthrough is a film of the deck-matched light theme, and the
+  // landing page is drawn in the same palette. Forcing it here, rather than
+  // calling setTheme, leaves the viewer's saved choice alone for the rest of
+  // the app.
+  const pathname = usePathname();
+  const forcedTheme =
+    pathname === "/" || pathname.startsWith("/demo") ? "light" : undefined;
 
   return (
     <NextThemesProvider

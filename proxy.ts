@@ -8,8 +8,9 @@ import { readEnv } from "@/lib/env";
  * same behaviour — see node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md
  *
  * Two jobs: refresh the Supabase auth cookie on every request, and keep
- * signed-out visitors out of the app shell. The share page /s/[token], the
- * login page and the /demo walkthrough are the only public routes.
+ * signed-out visitors out of the app shell. The landing page /, the share
+ * page /s/[token], the login page and the /demo walkthrough are the only
+ * public routes.
  */
 
 /**
@@ -32,9 +33,19 @@ const PUBLIC_PREFIXES = [
   ...(DEV_LOGIN_ENABLED ? ["/api/dev/login"] : []),
 ];
 
+/**
+ * Exact paths, kept apart from the prefixes on purpose: "/" as a prefix
+ * would make every route public.
+ */
+const PUBLIC_PATHS = [
+  // the landing page: static, made-up sample data, no queries
+  "/",
+];
+
 function isPublic(pathname: string) {
-  return PUBLIC_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(p),
+  return (
+    PUBLIC_PATHS.includes(pathname) ||
+    PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))
   );
 }
 

@@ -367,6 +367,27 @@ holds it.
 
 ---
 
+## Landing page
+
+`/` is the public landing page (`app/(landing)/page.tsx`, sections in
+`components/landing/`). It is static, reads no session and runs no queries;
+`proxy.ts` lists it as an exact public path, so every other route still
+needs a sign-in. Signed-in or not, "Open Lepaq" goes to `/dashboard`, and the
+proxy sends a signed-out visitor through `/login?next=/dashboard`.
+
+The opening is one sample line from a coffee chat, "Send the proposal by
+Friday, can?". Its demo (`components/landing/hero.tsx`) is local state only:
+Heard → Review → Kept, with the task, the date and the contact lifting out
+of the spoken line into the draft follow-up, then filing onto the person.
+Jamie Tan and Harbour Studio are made up, and the page says so wherever they
+appear. With reduced motion on, each state switches without the flight.
+
+The WhisperLah numbers in `components/landing/sections.tsx` are copied from
+the WhisperLah README results table. Update them in the same commit as that
+table, and keep the wording to "every model we tested".
+
+---
+
 ## Product walkthrough
 
 `/demo` is a 71-second film of the product, played by the app itself. The
