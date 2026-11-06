@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
+  ArrowRight,
+  CircleCheckBig,
   Loader2,
   MoreHorizontal,
   RotateCcw,
@@ -40,7 +42,7 @@ import { CoachPanel } from "@/components/meeting/coach-panel";
 import { TranscriptTab } from "@/components/meeting/transcript-tab";
 import { ShareDialog } from "@/components/meeting/share-dialog";
 import { createClient } from "@/lib/supabase/client";
-import { formatDate, initials } from "@/lib/utils";
+import { formatDate, initials, pluralise } from "@/lib/utils";
 import { readJson } from "@/lib/http";
 import type {
   ActionItem,
@@ -52,6 +54,12 @@ import type {
   PersonFact,
   TranscriptSegment,
 } from "@/lib/types";
+
+/** What "Save as draft" keeps in the browser for a report still in review. */
+interface ReviewDraft {
+  checkedItemIds: string[];
+  factDecisions: Record<string, EditableFact["decision"]>;
+}
 
 export function MeetingDetail({
   meeting: initialMeeting,
@@ -103,7 +111,32 @@ export function MeetingDetail({
     })),
   );
 
+  // "Save as draft" keeps the rep's choices without approving anything. The
+  // text edits and owners/dates go to the database; which boxes are ticked
+  // has no column short of `approved` (which would put drafts on the
+  // Follow-ups list), so the selection is kept in this browser until the
+  // report is approved.
+  const draftKey = `lepaq:review-draft:${meeting.id}`;
+  useEffect(() => {
+    if (initialMeeting.status !== "review") return;
+    let saved: ReviewDraft | null = null;
+    try {
+      saved = JSON.parse(window.localStorage.getItem(draftKey) ?? "null");
+    } catch {
+      saved = null;
+    }
+    if (!saved) return;
+    const checked = new Set(saved.checkedItemIds ?? []);
+    const decisions = saved.factDecisions ?? {};
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser-only storage, read once after hydration
+    setItems((list) => list.map((i) => ({ ...i, checked: checked.has(i.id) })));
+    setFacts((list) =>
+      list.map((f) => (decisions[f.id] ? { ...f, decision: decisions[f.id] } : f)),
+    );
+  }, [draftKey, initialMeeting.status]);
+
   const [saving, setSaving] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<"audio" | "meeting" | null>(null);
@@ -192,27 +225,73 @@ export function MeetingDetail({
     });
   }
 
+  /** Writes owner and due-date edits. Approval state is not touched. */
+  async function saveItemEdits() {
+    const results = await Promise.all(
+      items
+        .filter((i) => {
+          const original = initialActionItems.find((o) => o.id === i.id);
+          return (
+            original &&
+            (original.assignee_name !== i.assignee_name ||
+              original.due_date !== i.due_date)
+          );
+        })
+        .map((i) =>
+          createClient()
+            .from("action_items")
+            .update({ assignee_name: i.assignee_name, due_date: i.due_date })
+            .eq("id", i.id),
+        ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) throw new Error(failed.error.message);
+  }
+
+  async function saveDraft() {
+    setSavingDraft(true);
+    try {
+      await saveItemEdits();
+
+      // the edited summary and email, still unapproved (approved_at untouched)
+      if (report && (summary !== (report.summary ?? "") || email !== (report.follow_up_email ?? ""))) {
+        const { error } = await createClient()
+          .from("meeting_reports")
+          .update({
+            summary,
+            follow_up_email: email,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("meeting_id", meeting.id);
+        if (error) throw new Error(error.message);
+      }
+
+      const draft: ReviewDraft = {
+        checkedItemIds: items.filter((i) => i.checked).map((i) => i.id),
+        factDecisions: Object.fromEntries(facts.map((f) => [f.id, f.decision])),
+      };
+      try {
+        window.localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {
+        // private mode or full storage: the text edits above are still saved
+      }
+
+      toast.success("Draft saved. Nothing is approved yet.", {
+        description: "Open it again from Needs your review on the dashboard.",
+      });
+      router.push("/dashboard");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the draft.");
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
   async function approve() {
     setSaving(true);
     try {
       // persist assignee and due-date edits before flipping the approval bit
-      await Promise.all(
-        items
-          .filter((i) => {
-            const original = initialActionItems.find((o) => o.id === i.id);
-            return (
-              original &&
-              (original.assignee_name !== i.assignee_name ||
-                original.due_date !== i.due_date)
-            );
-          })
-          .map((i) =>
-            createClient()
-              .from("action_items")
-              .update({ assignee_name: i.assignee_name, due_date: i.due_date })
-              .eq("id", i.id),
-          ),
-      );
+      await saveItemEdits();
 
       const res = await fetch(`/api/meetings/${meeting.id}/approve`, {
         method: "POST",
@@ -229,9 +308,22 @@ export function MeetingDetail({
       const body = await readJson(res);
       if (!res.ok) throw new Error(body.error);
 
+      try {
+        window.localStorage.removeItem(draftKey);
+      } catch {
+        // nothing to clean up
+      }
       setMeeting((m) => ({ ...m, status: "ready" }));
+      const approvedCount = items.filter((i) => i.checked).length;
       toast.success("Approved.", {
-        description: "Follow-ups are on your list and approved facts are on their profiles.",
+        description:
+          approvedCount > 0
+            ? `${pluralise(approvedCount, "follow-up")} added to Follow-ups. Approved facts are on their profiles.`
+            : "Approved facts are on their profiles.",
+        action:
+          approvedCount > 0
+            ? { label: "Open Follow-ups", onClick: () => router.push("/follow-ups") }
+            : undefined,
       });
       router.refresh();
     } catch (err) {
@@ -280,6 +372,12 @@ export function MeetingDetail({
   }
 
   const coach = (report?.coach ?? null) as Coach | null;
+  // From the database once the page has it; right after approving in this
+  // tab, from the ticks just sent, until the refresh lands.
+  const approvedItemCount =
+    initialMeeting.status === "ready"
+      ? initialActionItems.filter((a) => a.approved).length
+      : items.filter((i) => i.checked).length;
   const personIdByName = Object.fromEntries(
     participants
       .filter((p) => p.person_id)
@@ -409,6 +507,30 @@ export function MeetingDetail({
         </Card>
       )}
 
+      {approved && report && (
+        <Card className="mb-6 border-success/30 bg-success-soft p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-2 text-sm text-on-success-soft">
+              <CircleCheckBig className="size-4 shrink-0" aria-hidden />
+              <span>
+                <span className="font-medium">Approved.</span>{" "}
+                {approvedItemCount > 0
+                  ? `${pluralise(approvedItemCount, "follow-up")} from this meeting ${approvedItemCount === 1 ? "is" : "are"} on your Follow-ups list.`
+                  : "No follow-ups were kept from this meeting."}
+              </span>
+            </p>
+            {approvedItemCount > 0 && (
+              <Button asChild variant="outline" size="sm">
+                <Link href="/follow-ups">
+                  Open Follow-ups
+                  <ArrowRight className="size-4" />
+                </Link>
+              </Button>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* ---- tabs ----------------------------------------------------------- */}
       {report && (
         <Tabs value={tab} onValueChange={setTab}>
@@ -484,17 +606,26 @@ export function MeetingDetail({
       {meeting.status === "review" && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur">
           <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <p className="text-sm text-muted-foreground">
-              {items.filter((i) => i.checked).length} follow-ups ·{" "}
-              {facts.filter((f) => f.decision === "approved").length} facts to save
+            {/* says what the click does and where it ends up, from the ticks */}
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              Approving adds{" "}
+              <span className="font-medium text-foreground">
+                {pluralise(items.filter((i) => i.checked).length, "follow-up")}
+              </span>{" "}
+              to Follow-ups and saves{" "}
+              <span className="font-medium text-foreground">
+                {pluralise(facts.filter((f) => f.decision === "approved").length, "fact")}
+              </span>{" "}
+              to profiles.
             </p>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => router.push("/dashboard")}>
+              <Button variant="ghost" onClick={saveDraft} disabled={saving || savingDraft}>
+                {savingDraft && <Loader2 className="size-4 animate-spin" />}
                 Save as draft
               </Button>
               <Button
                 onClick={approve}
-                disabled={saving}
+                disabled={saving || savingDraft}
                 className="bg-brand text-on-brand hover:bg-brand-hover"
               >
                 {saving && <Loader2 className="size-4 animate-spin" />}
