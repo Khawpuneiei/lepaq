@@ -15,6 +15,14 @@ For how a meeting moves through the code, file by file, see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The schema is in
 [Data model](#data-model).
 
+---
+
+## Live app
+
+Lepaq is deployed at **[lepaq-ai.vercel.app](https://lepaq-ai.vercel.app/)**
+(Vercel, deployed from `main`).
+
+---
 
 ## Speech recognition: WhisperLah
 
@@ -679,8 +687,48 @@ advice before putting real customer data in it. This is not legal advice.
    to match, since the share dialog builds links from it, and the landing
    page's preview card, canonical URL and sitemap do too. Those are read at
    build time, so redeploy after changing it. Then run
-   `npm run check:landing -- --base=https://<your-domain>`. Google and guest
-   sign-in need the settings in **Google and guest sign-in** above.
+   `npm run check:landing -- --base=https://<your-domain>`.
+5. **Google and guest sign-in** — until these are on, the login page's
+   buttons say which setting is off.
+   - Google Cloud → APIs & Services → Credentials: create an OAuth client ID
+     (Web application) with the redirect URI
+     `https://<project-ref>.supabase.co/auth/v1/callback` (Supabase shows the
+     exact URL on its Google provider page). Then Supabase → Authentication →
+     Sign In / Providers → Google: turn it on and paste the client ID and
+     secret.
+   - On the same page, turn on **Allow anonymous sign-ins**, leave **Allow
+     manual linking** off, and keep **Confirm email** on (under Email).
+     Manual linking lets anyone attach someone else's Google account to an
+     account they control. Without email confirmation, anyone can register a
+     password under someone else's email, and that person's Google sign-in
+     then lands in it.
+   - Redirect URLs need the `/**` form from step 4, plus
+     `http://localhost:3000/**` for local work and your preview pattern if you
+     sign in on previews. Google comes back to `/auth/callback?next=…`, and an
+     exact entry does not match a URL with a query string.
+   - Run `supabase/migrations/0006_guest_meetings.sql` in the SQL editor. It
+     adds the guest limits (`GUEST_MEETING_LIMIT`, `GUEST_TRANSCRIBE_RUNS` and
+     `GUEST_ANALYSIS_RUNS` in `lib/constants.ts`) and the move from a guest
+     into a Google account. It is safe to run again.
+
+**Old guests.** Anyone can make a guest. Supabase allows 30 anonymous sign-ins
+an hour from one IP address (Authentication → Rate Limits). Guests are not
+removed on their own; this deletes guests older than 30 days and everything
+they made:
+
+```sql
+delete from auth.users u
+where u.is_anonymous is true
+  and u.created_at < now() - interval '30 days'
+  -- Supabase refuses to delete a user who still owns a stored file
+  and not exists (
+    select 1 from storage.objects o
+    where o.owner = u.id or o.owner_id = u.id::text
+  );
+```
+
+A guest it skips still has audio in the `meeting-audio` bucket, in a folder
+named by their user id. Delete that folder in Storage and run it again.
 
 **Function size.** `ffmpeg-static` is around 78MB on Linux. `next.config.ts`
 traces that one binary into the `/process` function; ffprobe is not shipped
