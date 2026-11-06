@@ -43,7 +43,7 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
     { data: facts },
     { data: reads },
     { data: statuses },
-    { data: openItems },
+    { data: participantRows },
     { data: columnRows },
   ] = await Promise.all([
       supabase
@@ -63,13 +63,11 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
         .eq("owner_id", user.id)
         .eq("applies_to", "person")
         .order("sort_order", { ascending: true }),
+      // Meetings this person was in.
       supabase
-        .from("action_items")
-        .select("*")
-        .eq("person_id", id)
-        .eq("approved", true)
-        .eq("done", false)
-        .order("due_date", { ascending: true }),
+        .from("meeting_participants")
+        .select("meeting_id, meetings(id, title, meeting_date, status)")
+        .eq("person_id", id),
       supabase
         .from("interest_columns")
         .select("*")
@@ -81,12 +79,33 @@ export default async function PersonPage({ params }: PageProps<"/people/[id]">) 
     ? (columnRows as unknown as InterestColumn[])
     : fallbackColumns(user.id);
 
-  // Meetings this person was in, newest first.
-  const { data: participantRows } = await supabase
-    .from("meeting_participants")
-    .select("meeting_id, meetings(id, title, meeting_date, status)")
-    .eq("person_id", id);
+  // Open follow-ups: the ones this person owns, and every approved one from a
+  // meeting they were in. A follow-up's person is its owner, so "send Jamie the
+  // proposal" is yours and would otherwise only reach your list and the
+  // company page; prepping for Jamie is when you need it. The company page
+  // lists follow-ups by meeting the same way. The ids are from the database
+  // (person.id, meeting ids), never from the URL, so the filter string is safe.
+  const meetingIds = (participantRows ?? []).map((r) => r.meeting_id).filter(Boolean);
+  const openFollowUps = () =>
+    supabase
+      .from("action_items")
+      .select("*")
+      .eq("approved", true)
+      .eq("done", false)
+      .order("due_date", { ascending: true });
+  let { data: openItems, error: openError } = await openFollowUps().or(
+    meetingIds.length
+      ? `person_id.eq.${person.id},meeting_id.in.(${meetingIds.join(",")})`
+      : `person_id.eq.${person.id}`,
+  );
+  if (openError) {
+    // a failed lookup by meeting must not hide the ones this person owns
+    console.error("[people] open follow-ups by meeting:", openError.message);
+    ({ data: openItems, error: openError } = await openFollowUps().eq("person_id", person.id));
+    if (openError) console.error("[people] open follow-ups:", openError.message);
+  }
 
+  // Meetings this person was in, newest first.
   const history = (participantRows ?? [])
     .map((r) => r.meetings as unknown as {
       id: string;

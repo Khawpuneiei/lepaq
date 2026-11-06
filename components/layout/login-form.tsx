@@ -11,8 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { GoogleIcon } from "@/components/layout/google-icon";
 import { continueWithGoogle } from "@/lib/auth/google";
-import { safeNext } from "@/lib/auth/next";
 import { GUEST_MEETING_LIMIT } from "@/lib/constants";
+import { safeNext } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
@@ -27,7 +27,9 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = safeNext(params.get("next"));
+  // only a path on this site (lib/safe-next.ts); read when a button is
+  // pressed, since `window` does not exist while /login prerenders
+  const next = () => safeNext(params.get("next"), window.location.origin);
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -39,7 +41,7 @@ export function LoginForm({
   async function google() {
     setBusy("google");
     setError(null);
-    const problem = await continueWithGoogle(createClient(), next);
+    const problem = await continueWithGoogle(createClient(), next());
     // on success the browser is already on its way to Google
     if (problem) {
       setError(problem);
@@ -60,7 +62,7 @@ export function LoginForm({
       setBusy(null);
       return;
     }
-    router.push(next);
+    router.push(next());
     router.refresh();
   }
 
@@ -91,7 +93,7 @@ export function LoginForm({
         if (error) throw error;
       }
 
-      router.push(next);
+      router.push(next());
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in.");

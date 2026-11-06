@@ -8,8 +8,13 @@ import { readEnv } from "@/lib/env";
  * same behaviour — see node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md
  *
  * Two jobs: refresh the Supabase auth cookie on every request, and keep
- * signed-out visitors out of the app shell. The share page /s/[token], the
- * login page and the /demo walkthrough are the only public routes.
+ * signed-out visitors out of the app shell. The landing page /, the share
+ * page /s/[token], the login page and the /demo walkthrough are the only
+ * public routes.
+ *
+ * The landing page and the /demo walkthrough it links to do not pass through
+ * here at all (see the matcher): they read no session, so they must not wait
+ * on Supabase, or fail with it.
  */
 
 /**
@@ -32,9 +37,19 @@ const PUBLIC_PREFIXES = [
   ...(DEV_LOGIN_ENABLED ? ["/api/dev/login"] : []),
 ];
 
+/**
+ * Exact paths, kept apart from the prefixes on purpose: "/" as a prefix
+ * would make every route public.
+ */
+const PUBLIC_PATHS = [
+  // the landing page: static, made-up sample data, no queries
+  "/",
+];
+
 function isPublic(pathname: string) {
-  return PUBLIC_PREFIXES.some(
-    (p) => pathname === p || pathname.startsWith(p),
+  return (
+    PUBLIC_PATHS.includes(pathname) ||
+    PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))
   );
 }
 
@@ -98,13 +113,18 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        // `headers` is @supabase/ssr's no-store set: a response that carries a
+        // fresh session cookie must never be stored by a cache and replayed
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
           response = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
+          );
+          Object.entries(headers ?? {}).forEach(([key, value]) =>
+            response.headers.set(key, value),
           );
         },
       },
@@ -158,8 +178,26 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Everything except static assets. API routes are included on purpose:
-     * they need the refreshed session too.
+     * Everything except static assets, the landing page and the files
+     * crawlers fetch. API routes are included on purpose: they need the
+     * refreshed session too.
+     *
+     * `.+` rather than `.*` leaves out "/" itself. Next also matches each
+     * page's prefetch forms, so "/" arrives as /index.rsc and
+     * /index.segments/... too; those are left out by name. The landing page
+     * then never waits on Supabase (an expired cookie and a slow project
+     * meant about 25s of retries before it rendered) and costs no function
+     * call. Everything else, /dashboard.rsc included, still runs here.
+     *
+     * The walkthrough the landing page links to is left out the same way:
+     * /demo, /demo/frame (its iframe) and their prefetch forms read no
+     * session either, and each waited the same 25s. "/demonstration" or any
+     * other path that only starts with "demo" still runs here. /demo stays
+     * in PUBLIC_PREFIXES for the day this line changes.
+     *
+     * robots.txt, sitemap.xml, the manifest, the preview images and
+     * .well-known/ would otherwise be redirected to /login, which a crawler
+     * reads as "no rules" and "no sitemap".
      *
      * `ffmpeg/` and `.wasm` are excluded explicitly. The browser-side
      * compressor loads a 32MB core from /public, and without this the proxy
@@ -167,7 +205,12 @@ export const config = {
      * returns HTML, and the wasm fails to instantiate with an error that
      * points nowhere near the cause. It would also run a Supabase session
      * check against every megabyte of a static asset.
+     *
+     * Change it, then check it: node -e with getMiddlewareMatchers from
+     * next/dist/build/analysis/get-page-static-info.js, against "/",
+     * "/index.rsc", "/demo", "/demo/frame.rsc", "/demonstration",
+     * "/dashboard" and "/dashboard.rsc".
      */
-    "/((?!_next/static|_next/image|favicon.ico|ffmpeg/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|wasm)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|ffmpeg/|index(?:\\.rsc$|\\.segments/)|demo(?:$|/|\\.rsc$|\\.segments/)|robots\\.txt$|sitemap\\.xml$|manifest\\.webmanifest$|opengraph-image|twitter-image|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|wasm)$).+)",
   ],
 };

@@ -9,6 +9,7 @@
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "check:audio": "tsx --conditions=react-server scripts/check-audio.ts",
     "preflight": "tsx --conditions=react-server scripts/preflight.ts",
     "bootstrap": "tsx --conditions=react-server scripts/bootstrap.ts",
@@ -16,6 +17,7 @@
     "e2e": "tsx --conditions=react-server scripts/e2e.ts",
     "check:pages": "tsx --conditions=react-server scripts/check-pages.ts",
     "check:footprint": "tsx --conditions=react-server scripts/check-footprint.ts",
+    "check:landing": "tsx --conditions=react-server scripts/check-landing.ts",
     "demo:record": "tsx scripts/record-demo.ts",
     "postinstall": "node scripts/copy-ffmpeg-core.mjs"
   },
@@ -59,6 +61,7 @@
     "playwright-core": "^1.56.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.12"
   }
 }

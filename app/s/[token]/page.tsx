@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -5,7 +6,21 @@ import { formatDate } from "@/lib/utils";
 import type { Decision } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Meeting summary" };
+export const metadata: Metadata = {
+  title: "Meeting summary",
+  description: "A meeting summary shared from Lepaq.",
+  /*
+   * Its own openGraph, so the link unfurls as a plain card in WhatsApp or
+   * Slack. Setting one replaces the root layout's, and with it the landing
+   * page's preview image: a made-up follow-up "with Jamie Tan" must never
+   * stand in for a real meeting. Next copies the title and description in.
+   */
+  openGraph: { type: "website", siteName: "Lepaq", locale: "en_SG" },
+  twitter: { card: "summary" },
+  // also sent as X-Robots-Tag (next.config.ts); never list /s/ in robots.txt,
+  // or crawlers could not fetch the page to see this
+  robots: { index: false, follow: false },
+};
 
 /**
  * The only public page in the app.

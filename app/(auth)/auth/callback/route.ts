@@ -4,7 +4,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { isAuthApiError, isAuthSessionMissingError, type AuthError } from "@supabase/supabase-js";
 
 import { adoptGuest } from "@/lib/auth/guest";
-import { safeNext } from "@/lib/auth/next";
+import { safeNext } from "@/lib/safe-next";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -126,5 +126,7 @@ export async function GET(request: NextRequest) {
   }
 
   write(held);
-  return redirectTo(safeNext(url.searchParams.get("next")));
+  // safeNext answers a path on this site, which URL parsing has already
+  // percent-encoded to plain ASCII, so it is safe in a Location header
+  return redirectTo(safeNext(url.searchParams.get("next"), url.origin));
 }

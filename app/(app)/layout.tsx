@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { Toaster } from "@/components/ui/sonner";
 import { guestCanStartMeeting, isGuest } from "@/lib/auth/guest";
 import { createClient } from "@/lib/supabase/server";
 
@@ -20,13 +21,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   ]);
 
   return (
-    <AppShell
-      name={profile?.full_name ?? ""}
-      email={user.email ?? ""}
-      isGuest={guest}
-      guestCanStartMeeting={canStart}
-    >
-      {children}
-    </AppShell>
+    <>
+      <AppShell
+        name={profile?.full_name ?? ""}
+        email={user.email ?? ""}
+        isGuest={guest}
+        guestCanStartMeeting={canStart}
+      >
+        {children}
+      </AppShell>
+      <Toaster richColors closeButton position="top-right" />
+    </>
   );
 }

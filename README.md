@@ -6,9 +6,14 @@ builders.
 Upload a meeting recording, get back a report you can send, follow-ups you
 actually keep, and a relationship record for everyone in the room.
 
-Built from `MVP_BUILD_SPEC.md`. Everything the AI produces is a **private
-draft** until the user approves it — that stance shapes the data model and the
-UI, and it is not decoration.
+Built from an internal MVP spec that is not part of this repository; the
+"spec 5.3"-style references in comments point to its sections. Everything the
+AI produces is a **private draft** until the user approves it — that stance
+shapes the data model and the UI, and it is not decoration.
+
+For how a meeting moves through the code, file by file, see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The schema is in
+[Data model](#data-model).
 
 ---
 
@@ -252,8 +257,198 @@ flowchart LR
 ```
 
 A static copy is in [`docs/architecture.png`](docs/architecture.png) for
-viewers that do not render Mermaid. Regenerate it from the block above (for
+viewers that do not render Mermaid. The step-by-step walk through the code,
+with file paths, is [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Regenerate it from the block above (for
 example at mermaid.live) when the diagram changes.
+
+---
+
+## Data model
+
+Seventeen tables in `public`, from `supabase/migrations/0001`-`0006`, plus
+Supabase's own `auth.users`. Every arrow is a foreign key in the SQL (28 in
+all); a ring on the parent side means the column is nullable.
+
+```mermaid
+erDiagram
+    auth_users ||--o| profiles : "has"
+    auth_users ||--o{ status_options : "owns"
+    auth_users ||--o{ companies : "owns"
+    auth_users ||--o{ people : "owns"
+    auth_users ||--o{ meetings : "owns"
+    auth_users ||--o{ action_items : "owns"
+    auth_users ||--o{ person_facts : "owns"
+    auth_users ||--o{ interest_columns : "owns"
+    auth_users ||--o| guest_meetings : "counted in, as a guest"
+
+    status_options |o--o{ companies : "status of"
+    status_options |o--o{ people : "status of"
+    companies |o--o{ people : "employs"
+    companies |o--o{ meetings : "is met in"
+
+    meetings ||--o{ meeting_participants : "has"
+    people |o--o{ meeting_participants : "attends as"
+    meetings ||--o{ transcript_segments : "has"
+    meetings ||--o{ speaker_mappings : "has"
+    meeting_participants |o--o{ speaker_mappings : "is voice"
+    meetings ||--o{ transcription_chunks : "split into"
+    meetings ||--o{ transcription_jobs : "sent as"
+    meetings ||--o{ speaker_embeddings : "has"
+    meetings ||--o| meeting_reports : "has"
+    meetings ||--o{ action_items : "produces"
+    people |o--o{ action_items : "assigned"
+    meetings ||--o{ participant_reads : "has"
+    people |o--o{ participant_reads : "read of"
+    people ||--o{ person_facts : "remembered"
+    meetings |o--o{ person_facts : "source of"
+
+    auth_users {
+        uuid id PK "managed by Supabase Auth"
+    }
+    profiles {
+        uuid id PK, FK
+        text full_name
+        boolean delete_audio_after_processing
+    }
+    status_options {
+        uuid id PK
+        uuid owner_id FK
+        text applies_to "company or person"
+        text label
+        boolean is_won
+    }
+    companies {
+        uuid id PK
+        uuid owner_id FK
+        uuid status_id FK
+        text name "unique per owner, case-insensitive"
+        text kind
+        numeric deal_value
+    }
+    people {
+        uuid id PK
+        uuid owner_id FK
+        uuid company_id FK
+        uuid status_id FK
+        text full_name "unique per owner and company"
+        text email
+    }
+    meetings {
+        uuid id PK
+        uuid owner_id FK
+        uuid company_id FK
+        text title
+        text status "uploaded to ready, or failed"
+        text audio_path
+        boolean consent_confirmed
+        text share_token UK
+    }
+    meeting_participants {
+        uuid id PK
+        uuid meeting_id FK
+        uuid person_id FK
+        text display_name
+        boolean is_me
+        text speaker_label
+    }
+    transcript_segments {
+        bigint id PK
+        uuid meeting_id FK
+        int idx
+        text raw_speaker_label
+        text speaker_label
+        numeric start_sec
+        text text "GIN full-text index"
+        boolean excluded
+    }
+    speaker_mappings {
+        uuid id PK
+        uuid meeting_id FK "unique with raw label"
+        uuid participant_id FK
+        text raw_speaker_label
+        boolean confirmed
+    }
+    transcription_chunks {
+        uuid id PK
+        uuid meeting_id FK "unique with chunk_index"
+        int chunk_index
+        text status
+        jsonb segments
+    }
+    transcription_jobs {
+        uuid id PK
+        uuid meeting_id FK "one open job per meeting"
+        text status "queued, running, done, failed"
+        timestamptz checked_at
+        jsonb result
+    }
+    speaker_embeddings {
+        uuid id PK
+        uuid meeting_id FK
+        text raw_speaker_label
+        text model
+        int dim
+        vector embedding "pgvector"
+    }
+    meeting_reports {
+        uuid meeting_id PK, FK
+        text summary
+        jsonb coach
+        jsonb talk_ratio
+        text model
+        timestamptz approved_at
+    }
+    action_items {
+        uuid id PK
+        uuid meeting_id FK
+        uuid owner_id FK
+        uuid person_id FK
+        text title
+        date due_date
+        boolean approved
+    }
+    participant_reads {
+        uuid id PK
+        uuid meeting_id FK
+        uuid person_id FK
+        text sentiment
+        int engagement "1 to 5"
+    }
+    person_facts {
+        uuid id PK
+        uuid owner_id FK
+        uuid person_id FK
+        uuid meeting_id FK
+        text category "open, sensitive ones blocked"
+        text fact
+        boolean approved
+    }
+    interest_columns {
+        uuid id PK
+        uuid owner_id FK "unique with key"
+        text key
+        text label
+        text_array categories
+    }
+    guest_meetings {
+        uuid user_id PK, FK "one row per guest"
+        uuid meeting_id "no FK, on purpose"
+        int transcriptions
+        int analyses
+    }
+```
+
+Design choices that are in the SQL, not just in the app:
+
+- **Owner-scoped rows under RLS.** Tables with an `owner_id` get an `own_rows` policy (`owner_id = auth.uid()`); meeting children get `via_meeting`, which checks the parent meeting's owner (`0001`, `0004`, `0005`).
+- **Jobs are read-only to users.** `transcription_jobs` has a select-only policy and `insert, update, delete` are revoked from `anon` and `authenticated`, so only the service role writes there (`0005`).
+- **One open job per meeting.** A partial unique index on `transcription_jobs (meeting_id) where status in ('queued','running')` means a double-clicked Retry cannot start two GPU jobs (`0005`).
+- **Raw and canonical speaker labels.** `transcript_segments` keeps the diariser's `raw_speaker_label` next to the confirmed `speaker_label`, and `speaker_mappings` is unique on `(meeting_id, raw_speaker_label)`, so speakers can be re-mapped without re-transcribing (`0001`).
+- **Full-text search on transcripts.** A GIN index on `to_tsvector('english', text)` over `transcript_segments` (`0001`).
+- **pgvector for voiceprints.** `speaker_embeddings.embedding` is an untyped `vector` with a check that `vector_dims(embedding) = dim`, and `model` is part of the unique key so vectors from different embedders are never mixed (`0004`).
+- **No duplicate people or companies.** Unique indexes on `lower(trim(name))` per owner (and per company for people, with `coalesce` so a null company still collides) (`0002`).
+- **Guest limits only the server can change.** `guest_meetings` has RLS on and no policy, and `rapport_guest_charge` and `rapport_adopt_guest` cannot be called by `anon` or `authenticated`. It has no foreign key to `meetings`, so deleting a meeting does not reset the count, and the charge locks the guest's row so two requests at once count one after the other (`0006`).
+- **Sensitive facts blocked in the database too.** `person_facts.category` must match `^[a-z][a-z0-9_]{0,38}$` and is not allowed to be health, religion, politics, ethnicity, sexuality, finances and the like (`0003`).
 
 ---
 
@@ -447,6 +642,110 @@ holds it.
 
 ---
 
+## Landing page
+
+`/` is the public landing page (`app/(landing)/page.tsx`, sections in
+`components/landing/`). It is static, reads no session and runs no queries.
+The session proxy does not run on it at all: the matcher in `proxy.ts` leaves
+out `/` and its prefetch forms, so the page never waits on Supabase. It leaves
+out the `/demo` walkthrough the page links to for the same reason, and the
+files crawlers fetch (`robots.txt`, `sitemap.xml`, the preview images,
+`.well-known/`) so they are not redirected to sign-in. Every app route still
+needs a sign-in. "Open Lepaq" goes to `/dashboard`, and the proxy sends a
+signed-out visitor through `/login?next=/dashboard`. Signed-in visitors see the
+same page; redirecting them from `/` would put Supabase back in front of it.
+
+The page is one scroll story (`components/landing/story.tsx`) that follows a
+single sample line from a coffee chat, "Send the proposal by Friday, can?".
+A sticky stage holds three scenes (the spoken line, the transcript and report,
+the person's page) while four chapters scroll past: Written down, Drafted,
+Your call, Remembered. Each chapter names the statuses it covers with the
+app's own labels (Transcribing, Check speakers, Analysing, Needs review,
+Approved). On desktop the chapters sit in the stage's left column; below
+64rem (1024px at the usual text size) the stage pins to the top and the
+chapters scroll under it. On short screens below that width (a phone held
+sideways, a laptop at 150-200% zoom) the stage scrolls away with the page
+instead, since pinned it would leave no room to read. The breakpoints are in
+rem, like Tailwind's, so a larger default text size gets the layout that much
+text needs: a 1440px window at 200% text is laid out like a 720px one. The
+stage drops its least important lines as it gets shorter or narrower, so the
+Approve button and the open follow-up stay in view, and on a narrow stage
+with large text its titles shrink to fit their card rather than run out of it.
+
+Each step forward plays on the stage: the line settles into the transcript,
+the task, the date and the person lift out of it into the draft, approving
+stamps the report, and the follow-up files onto Jamie's page. The flights
+(`components/landing/motion.ts`) move a copy of each phrase on a short arc
+with the Web Animations API while the real one waits, invisible, where it
+lands. Scrolling back plays the first and last flights in reverse and fades
+the rest. Jumping several chapters at once, from the rail, a link or a reload
+on `#chapter-approved`, switches straight to the right state. With reduced
+motion on there are no flights, only the state changes.
+
+The stage is an illustration. It is hidden from screen readers, and each
+chapter carries a text version of what it shows; "Skip the story" goes to the
+benchmark. It is marked `translate="no"`, because a page translator rewriting
+the text React swaps there crashes React. It only pins once the story's script
+has run, and an error boundary swaps in a plain page of the chapters if that
+script fails, so the words never depend on it.
+
+Everything here is local state and saves nothing. Jamie Tan and Harbour Studio
+are made up, and the page says so wherever they appear. The sections after the
+story rise in once, when scrolled to (`components/landing/reveal.tsx`). What
+is already on screen when the page wakes up is never hidden to play that
+entrance, and printing shows everything.
+
+**Claims.** The page makes claims about accuracy and privacy. Check every
+change to one against the owner's claim review
+(`pitch-deck/overclaim-review.md` in the project files; it is not in this
+repo) and against the code that backs it:
+
+- The WhisperLah numbers in `components/landing/sections.tsx` are copied from
+  the WhisperLah README results table. Update them in the same commit as that
+  table, and keep the wording to "every model we tested".
+- Name the mode and the precision behind every comparison. Lepaq sends room
+  mode (`lib/asr/jobs.ts`), so the page leads with room-mode results.
+  SASRBench scores only the person wearing the mic, so its 14.8% is near-mic
+  mode, and room mode's 17.1% stands beside it. MERaLiON-2-10B was run in
+  4-bit. Café noise and speaker labels are not benchmarked yet, and the page
+  says so.
+- Production serves an int8 build of WhisperLah v3, within a point of the
+  evaluation numbers; `npm run preflight` prints the `model_version` it
+  answers with. If the served model changes, check the numbers on the page.
+- A privacy promise has to hold in the code: what waits for your approval,
+  what a share link shows, where audio is processed (Modal, US East) and
+  which model writes the report (Claude).
+
+**Metadata.** The preview image is `app/opengraph-image.png`, with its alt
+text in `app/opengraph-image.alt.txt`; `app/robots.ts` and `app/sitemap.ts`
+serve the crawler files. Their absolute links, the canonical URL and the
+structured data come from `lib/site.ts`: `NEXT_PUBLIC_APP_URL` first, then
+Vercel's production domain. Static pages read them at build time, so change
+the variable, then redeploy. Shared summaries at `/s/...` are `noindex`, and
+unfurl as a plain card: they set their own Open Graph tags, which drops the
+landing page's preview image.
+
+**Checking it.** With a build running (`npm run build && npm run start`),
+`npm run check:landing` drives a headless Chrome or Edge through the page:
+the metadata and crawler files, a shared summary's plain preview card, `/`
+and the walkthrough answering without the proxy, the security headers, the
+sign-in page's `?next=` cases, every chapter link at seven screen sizes and
+at 200% text, the stage keeping its Approve button in view with nothing
+printed over it, running out of its card or breaking where a flight lands,
+at twenty-six short, narrow or large-text sizes (the desktop ones again with
+the classic scrollbars Windows draws), the opening clear of the spoken line
+as the first scroll moves it, the closing picture of the app at the same
+sizes, the header keeping one row, Back after the page's #links and out of
+the walkthrough, a reload at the top staying there, the header's logo going
+back to the top, focus outlines and focus scrolling, a simulated page
+translator, reduced motion, printing, and the page with JavaScript off or
+with the story's script failing. Point it at a deploy with
+`npm run check:landing -- --base=https://<domain>`, or run part of it with
+`-- --only=tight,back`. The plan behind it, with the finding each check
+guards, is `docs/landing-page-plan.md`.
+
+---
+
 ## Product walkthrough
 
 `/demo` is a 71-second film of the product, played by the app itself. The
@@ -505,7 +804,9 @@ advice before putting real customer data in it. This is not legal advice.
 
 1. **GitHub** — push the repo. `.env*` is gitignored; `.env.example` is not.
 2. **Vercel** — import the repo, add every variable from `.env.example` for
-   Production and Preview, deploy.
+   Production and Preview, deploy. Leave out the local development block at
+   its end (`DEV_AUTH_BYPASS`, `OWNER_EMAIL`, `OWNER_USER_ID`): it is for your
+   machine and the scripts, and nothing in production needs it.
 3. **Fluid Compute** — Project → Settings → Functions. Required for
    `maxDuration = 300` to be honoured on Hobby. The routes that call Claude
    need the time: the job callback, `/status`, the cron and a Retry through
@@ -515,7 +816,10 @@ advice before putting real customer data in it. This is not legal advice.
 4. **Supabase URL config** — Authentication → URL Configuration. Set Site URL
    to your deployed domain and add `https://<your-domain>/**` to Redirect
    URLs, or login redirects break in production. Update `NEXT_PUBLIC_APP_URL`
-   to match, since the share dialog builds links from it. Google and guest
+   to match, since the share dialog builds links from it, and the landing
+   page's preview card, canonical URL and sitemap do too. Those are read at
+   build time, so redeploy after changing it. Then run
+   `npm run check:landing -- --base=https://<your-domain>`. Google and guest
    sign-in need the settings in **Google and guest sign-in** above.
 
 **Function size.** `ffmpeg-static` is around 78MB on Linux. `next.config.ts`
@@ -532,24 +836,24 @@ Hobby is for non-commercial use. Fine for demos and user interviews.
 
 ```
 app/
+  (landing)/      the public landing page at /
   (app)/          dashboard, meetings, people, companies, follow-ups, settings
-  (auth)/login
-  auth/callback    where Google sends people back; auth/error explains a failure
+  (auth)/         login; auth/callback, where Google sends people back; auth/error, which explains a failed sign-in
   api/meetings/   create, process, status, analyze, approve, share, audio, regenerate
   api/transcription/callback   where the GPU service reports a finished job
   api/cron/transcription-jobs  daily sweep for jobs whose callback never came
-  s/[token]/      the only public page
+  s/[token]/      a shared meeting summary, public by link
 components/
-  layout/ dashboard/ meeting/ people/ shared/ ui/
+  landing/ layout/ dashboard/ meeting/ people/ shared/ ui/
 lib/
   ai/             transcribe, claude, mapSpeakers, analyze, prompts, schema, respond
   asr/jobs.ts     whole-file jobs on the GPU service
   audio/chunk.ts  the long-audio splitter (per-part backend)
   pipeline/       finishTranscription (after any transcript), runAnalysis (analyze, regenerate)
   supabase/       client (browser), server (RSC), admin (service role)
-docs/             architecture.png
+docs/             architecture.png, landing-page-plan.md
 supabase/migrations/  0001-0006, run in order
-scripts/          preflight, e2e, try-pipeline, seed, check-audio
+scripts/          preflight, e2e, try-pipeline, seed, check-audio, check-landing
 proxy.ts          auth guard — Next 16 renamed middleware to proxy
 ```
 
@@ -570,6 +874,8 @@ npm run preflight     # env, tables, bucket, Claude key and the GPU service, wit
 npm run e2e -- a.m4a  # create, upload, process, analyze, approve, share, public page, against the dev server
 npm run check:audio   # long-audio splitter smoke test
 npm run demo:record   # render /demo to demo-out/lepaq-demo.mp4 (app must be running)
+npm run check:landing # the landing page in a headless browser (app must be running; -- --base=<url>)
+npm run check:pages   # every app screen against live data, signed in as OWNER_EMAIL (dev server running)
 ```
 
 ---

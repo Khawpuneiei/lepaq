@@ -1,12 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { safeNext } from "@/lib/auth/next";
+import { safeNext } from "@/lib/safe-next";
 
 const PROVIDER_OFF =
   "Google sign-in is switched off in Supabase (Authentication → Sign In / Providers → Google).";
 
 function callbackUrl(next: string) {
-  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(safeNext(next))}`;
+  const origin = window.location.origin;
+  return `${origin}/auth/callback?next=${encodeURIComponent(safeNext(next, origin))}`;
 }
 
 /**
