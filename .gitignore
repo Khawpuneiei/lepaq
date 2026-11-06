@@ -51,3 +51,6 @@ next-env.d.ts
 
 # rendered walkthrough videos and stills (npm run demo:record)
 /demo-out/
+
+# Visual Studio local state
+.vs/
