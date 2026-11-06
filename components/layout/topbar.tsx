@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut, Menu, Mic, Plus } from "lucide-react";
+import { LogOut, Menu, Mic, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -52,17 +52,22 @@ export function Topbar({ name, email }: { name: string; email: string }) {
       <div className="ml-auto flex items-center gap-2">
         {/* One-tap capture: the tap that lands here is the gesture the
             browser needs before it asks for the microphone */}
+        {/* Two ways in, named for what the user has in hand: a meeting about
+            to happen, or a file that already exists. They open the same
+            wizard in record or upload mode. */}
         <Button asChild className="bg-brand text-on-brand hover:bg-brand-hover">
-          <Link href="/meetings/new?record=1">
+          <Link href="/meetings/new?record=1" aria-label="Record meeting">
             <Mic className="size-4" />
-            Record
+            <span>
+              Record<span className="hidden sm:inline"> meeting</span>
+            </span>
           </Link>
         </Button>
 
         <Button asChild variant="outline">
-          <Link href="/meetings/new" aria-label="New meeting from a file">
-            <Plus className="size-4" />
-            <span className="hidden sm:inline">New meeting</span>
+          <Link href="/meetings/new" aria-label="Upload recording">
+            <Upload className="size-4" />
+            <span className="hidden sm:inline">Upload recording</span>
           </Link>
         </Button>
 

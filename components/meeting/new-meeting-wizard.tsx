@@ -303,8 +303,9 @@ export function NewMeetingWizard({
         <section>
           <h2 className="mb-1 font-display text-2xl">Add the recording</h2>
           <p className="mb-5 text-sm text-muted-foreground">
-            Audio only. Long recordings are fine — they just take a few
-            minutes more to transcribe.
+            Record here, or upload an audio or video file. Only the sound is
+            used. Long recordings are fine — they just take a few minutes more
+            to transcribe.
           </p>
           <UploadDropzone
             value={picked}

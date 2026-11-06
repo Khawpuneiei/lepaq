@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock, HeartHandshake, ListChecks, Mic } from "lucide-react";
+import { ArrowRight, Clock, HeartHandshake, ListChecks, Mic, Upload } from "lucide-react";
 import { differenceInCalendarDays, parseISO, subDays } from "date-fns";
 
 import { Button } from "@/components/ui/button";
@@ -167,80 +167,153 @@ export default async function DashboardPage() {
     .slice(0, 6);
 
   const firstName = (profile?.full_name ?? "").split(" ")[0];
+  // Nothing captured yet: no stats, inbox or pipeline to show, only a start.
+  const firstRun = allMeetings.length === 0;
 
   return (
     <div className="mx-auto max-w-7xl">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <h1 className="font-display text-4xl leading-tight md:text-5xl">
-          {greeting()}
-          {firstName ? `, ${firstName}` : ""}.
-        </h1>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href="/meetings/new">New meeting</Link>
-          </Button>
-          <Button asChild className="bg-brand text-on-brand hover:bg-brand-hover">
-            <Link href="/meetings/new?record=1">
-              <Mic className="size-4" />
-              Record
-            </Link>
-          </Button>
-        </div>
-      </div>
+      {/* Record and Upload live in the top bar on every screen, so the page
+          does not repeat them (and keeps to one orange action). */}
+      <h1 className="mb-8 font-display text-4xl leading-tight md:text-5xl">
+        {greeting()}
+        {firstName ? `, ${firstName}` : ""}.
+      </h1>
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Meetings captured this week"
-          value={capturedThisWeek}
-          icon={<Mic className="size-4" />}
-          series={capturedSeries}
-        />
-        <StatCard
-          label="Follow-ups due"
-          value={open.length}
-          icon={<ListChecks className="size-4" />}
-          accent={overdue > 0 ? "butter" : "primary"}
-          hint={overdue > 0 ? `${pluralise(overdue, "overdue item")}` : "Nothing overdue"}
-          hintTone={overdue > 0 ? "warn" : "muted"}
-        />
-        <StatCard
-          label="Hours of note-taking saved"
-          value={hoursSaved.toFixed(1)}
-          icon={<Clock className="size-4" />}
-          accent="success"
-          hint={`Estimate: ${MINUTES_SAVED_PER_MEETING} min per processed meeting`}
-        />
-        <StatCard
-          label="Relationships warming"
-          value={warming}
-          icon={<HeartHandshake className="size-4" />}
-          accent="success"
-          hint="People who sounded better than last time"
-        />
-      </section>
+      {firstRun ? (
+        <FirstRun />
+      ) : (
+        <>
+          {/* What is waiting on the user comes before the numbers: on a phone
+              the four stat cards are a full screen of scrolling. */}
+          {needsReview.length > 0 && (
+            <section className="mb-10">
+              <h2 className="mb-3 font-display text-2xl">Needs your review</h2>
+              <ReviewInbox meetings={needsReview} />
+            </section>
+          )}
 
-      <section className="mt-10">
-        <h2 className="mb-3 font-display text-2xl">Needs your review</h2>
-        <ReviewInbox meetings={needsReview} />
-      </section>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Meetings captured this week"
+              value={capturedThisWeek}
+              icon={<Mic className="size-4" />}
+              series={capturedSeries}
+            />
+            <StatCard
+              label="Follow-ups due"
+              value={open.length}
+              icon={<ListChecks className="size-4" />}
+              accent={overdue > 0 ? "butter" : "primary"}
+              hint={overdue > 0 ? `${pluralise(overdue, "overdue item")}` : "Nothing overdue"}
+              hintTone={overdue > 0 ? "warn" : "muted"}
+            />
+            <StatCard
+              label="Hours of note-taking saved"
+              value={hoursSaved.toFixed(1)}
+              icon={<Clock className="size-4" />}
+              accent="success"
+              hint={`Estimate: ${MINUTES_SAVED_PER_MEETING} min per processed meeting`}
+            />
+            <StatCard
+              label="Relationships warming"
+              value={warming}
+              icon={<HeartHandshake className="size-4" />}
+              accent="success"
+              hint="People who sounded better than last time"
+            />
+          </section>
 
-      <section className="mt-10">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-display text-2xl">Pipeline</h2>
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/companies">All companies</Link>
-          </Button>
-        </div>
-        <PipelineBoard
-          statuses={(statuses ?? []) as StatusOption[]}
-          companies={boardCompanies}
-        />
-      </section>
+          {needsReview.length === 0 && (
+            <section className="mt-10">
+              <h2 className="mb-3 font-display text-2xl">Needs your review</h2>
+              <ReviewInbox
+                meetings={needsReview}
+                processing={
+                  allMeetings.filter((m) =>
+                    ["uploaded", "transcribing", "analyzing"].includes(m.status),
+                  ).length
+                }
+              />
+            </section>
+          )}
 
-      <section className="mt-10">
-        <h2 className="mb-3 font-display text-2xl">Recent activity</h2>
-        <ActivityStrip items={activity} />
-      </section>
+          <section className="mt-10">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-display text-2xl">Pipeline</h2>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/companies">All companies</Link>
+              </Button>
+            </div>
+            <PipelineBoard
+              statuses={(statuses ?? []) as StatusOption[]}
+              companies={boardCompanies}
+            />
+          </section>
+
+          <section className="mt-10">
+            <h2 className="mb-3 font-display text-2xl">Recent activity</h2>
+            <ActivityStrip items={activity} />
+          </section>
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * An account with no meetings has nothing to measure yet, so instead of four
+ * zeros it shows the one thing to do first, split by what the user has in
+ * hand. Both open the same wizard the top bar does.
+ */
+function FirstRun() {
+  const ways = [
+    {
+      href: "/meetings/new",
+      icon: Upload,
+      title: "Upload recording",
+      body: "You already have audio or video of the conversation: a phone voice memo, a Zoom or Teams download.",
+    },
+    {
+      href: "/meetings/new?record=1",
+      icon: Mic,
+      title: "Record meeting",
+      body: "The meeting is about to start. Record it here in the browser, with everyone's consent.",
+    },
+  ];
+
+  return (
+    <section aria-labelledby="first-run-heading" className="rounded-lg border bg-card p-6 shadow-card md:p-8">
+      <h2 id="first-run-heading" className="font-display text-2xl md:text-3xl">
+        Start with your first conversation
+      </h2>
+      <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+        Lepaq turns it into a transcript, then a private draft report with follow-ups.
+        You check it, tick what is real, and approve. Approved follow-ups land in
+        Follow-ups, and everyone you met gets a profile in People.
+      </p>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        {ways.map(({ href, icon: Icon, title, body }) => (
+          <Link
+            key={href}
+            href={href}
+            className="group flex items-start gap-4 rounded-lg border bg-background p-4 transition-colors duration-150 hover:border-primary/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <span className="rounded-full bg-muted p-2.5">
+              <Icon className="size-5 text-foreground" aria-hidden />
+            </span>
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 font-medium">
+                {title}
+                <ArrowRight
+                  className="size-4 transition-transform duration-150 group-hover:translate-x-0.5"
+                  aria-hidden
+                />
+              </span>
+              <span className="mt-1 block text-sm text-muted-foreground">{body}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
