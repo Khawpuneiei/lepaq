@@ -15,169 +15,29 @@ For how a meeting moves through the code, file by file, see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The schema is in
 [Data model](#data-model).
 
----
 
-## Quick start
+## Speech recognition: WhisperLah
 
-```bash
-npm install
-cp .env.example .env.local   # then fill it in, see below
-npm run dev
-```
+Lepaq transcribes meetings with **WhisperLah**, our own Singlish speech
+recognition model: a LoRA adapter on OpenAI's open `whisper-large-v3-turbo`,
+trained on IMDA's National Speech Corpus plus English meeting speech. It runs
+as an int8 CTranslate2 model on a GPU service, next to pyannote community-1
+for speaker labels (see [Architecture](#architecture)).
 
-The app will not do anything useful until Supabase is set up.
+- On seven contamination-checked Singlish test sets, it has the lowest word
+  error rate of the 18 systems tested (17 other open models and OpenAI API
+  settings) on five of them. That includes 14.8% on SASRBench-v1 (next best
+  15.8%, OpenAI GPT Transcribe) and 18.0% on NSC two-person conversation
+  (next best 25.2%). It is behind A*STAR's MERaLiON-2-3B on the two
+  read-speech sets.
+- It writes down 76% of Singlish discourse particles (lah, leh, lor …) on NSC
+  conversation, against 50% for the next best system.
+- The model weights are proprietary and are not published.
 
-### 1. Supabase
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open the SQL editor and run every file in `supabase/migrations`, in
-   order, each in full:
-   - `0001_init.sql` creates the base tables and their row level security
-     policies, the private `meeting-audio` storage bucket with its policies,
-     and the trigger that gives each new user the default status lists;
-   - `0002` and `0003` stop duplicate people and companies, and add the
-     person-fact categories and the user's own Table of Interest columns;
-   - `0004` and `0005` add the speaker embeddings and the GPU job table that
-     transcription writes to;
-   - `0006` adds the guest limits and the move from a guest to a Google
-     account (see **Google and guest sign-in** below).
-
-   Run each once. A later file changes some things an earlier one set up,
-   so running an older file again on its own can undo them. Once
-   `.env.local` is complete (Claude and the GPU service below too),
-   `npm run preflight` checks that every table is there, and if one is
-   missing names the file to start from.
-3. Copy Project Settings → API into `.env.local`:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` — server only, never `NEXT_PUBLIC`
-
-### 2. Claude
-
-Add `ANTHROPIC_API_KEY`. Speaker mapping and the meeting report are both
-structured-output calls to Claude (`lib/ai/respond.ts`):
-
-| Variable | Default | Notes |
-|---|---|---|
-| `LLM_MODEL` | `claude-haiku-5-5` | Answers every call first. |
-| `LLM_FALLBACK_MODEL` | `claude-sonnet-5-5` | Asked only when the first model refuses, runs out of tokens, returns JSON that fails validation, or is rate limited / overloaded after the SDK's retries. Never on a 400. |
-| `LLM_EFFORT` | `medium` | `low` to `max`. Raise if coach output reads thin. |
-
-The report stores which model actually answered (`meeting_reports.model`).
-The system prompts are cached; no `temperature` or prefill is sent (both are
-rejected by these models).
-
-Transcription is separate: see **Whole-file jobs on the GPU service** below.
-
-### 3. Google and guest sign-in
-
-The login page offers **Continue with Google**, email and password, and
-**Continue as guest**. Google and guests each need switching on in Supabase;
-until they are, their buttons say which setting is off.
-
-**Google**
-
-1. Google Cloud console → APIs & Services → Credentials → Create credentials
-   → OAuth client ID, type *Web application*. If it asks for a consent
-   screen first, make one (External, the app's name and a support email).
-   Under *Authorized redirect URIs* add
-   `https://<project-ref>.supabase.co/auth/v1/callback`; Supabase shows the
-   exact URL on its Google provider page.
-2. Supabase → Authentication → Sign In / Providers → Google: turn it on and
-   paste the client ID and client secret.
-3. Supabase → Authentication → URL Configuration → Redirect URLs: add
-   `http://localhost:3000/**` and `https://<your-domain>/**`, plus your
-   Vercel preview pattern if you sign in on previews. Use the `/**` form:
-   the app comes back to `/auth/callback?next=…`, and an exact entry does not
-   match a URL with a query string.
-
-**Guests**
-
-1. Supabase → Authentication → Sign In / Providers: turn on **Allow
-   anonymous sign-ins**.
-2. Leave **Allow manual linking** off. Lepaq does not need it, and with it
-   on anyone can attach someone else's Google account to an account they
-   control, by sending them a link.
-3. Keep **Confirm email** on (Sign In / Providers → Email). With it off,
-   anyone can sign up with someone else's email and a password of their
-   choosing, and when the owner of that email later signs in with Google,
-   Supabase signs them into that account. Lepaq never moves a guest into an
-   account that has a password, but the sign-in itself would still land
-   there.
-4. Run `0006_guest_meetings.sql`.
-
-A guest is a Supabase anonymous user. It may process one meeting
-(`GUEST_MEETING_LIMIT` in `lib/constants.ts`; 0 lets guests look around
-only), with a few tries at each paid step: `GUEST_TRANSCRIBE_RUNS` calls to
-`/process` that start GPU work or reuse a stored transcript, and
-`GUEST_ANALYSIS_RUNS` Claude reports from `/analyze` and `/regenerate`. A
-job the GPU service turns down is not counted, and once the reports are used
-up `/process` refuses too. The server counts them in `guest_meetings`, which
-only the service role can touch, so deleting the meeting or resetting its
-status does not buy more. Members are never counted.
-
-*Continue with Google to keep it* is an ordinary Google sign-in from the
-same browser. When it comes back, `/auth/callback` moves everything the guest
-made into the Google account and deletes the guest (`rapport_adopt_guest`).
-The account's own statuses and Table of Interest columns stay; the guest's
-are merged in by name. If that Google account already has meetings,
-companies or people of its own, or a password, nothing moves and the person
-stays the guest, with a page that explains their choice. A guest has no way back in after signing out, so the app asks
-before it does.
-
-Anyone can make a guest. Supabase allows 30 anonymous sign-ins an hour from
-one IP address (Authentication → Rate Limits). Turning on CAPTCHA would need
-a CAPTCHA widget on the login page first; without one, sign-in stops
-working. Old guests are not removed on their own; this deletes guests older
-than 30 days and everything they made:
-
-```sql
-delete from auth.users u
-where u.is_anonymous is true
-  and u.created_at < now() - interval '30 days'
-  -- Supabase refuses to delete a user who still owns a stored file
-  and not exists (
-    select 1 from storage.objects o
-    where o.owner = u.id or o.owner_id = u.id::text
-  );
-```
-
-A guest it skips still has audio in the `meeting-audio` bucket, in a folder
-named by their user id (usually an upload that was never processed, since
-audio is deleted after processing by default). Delete that folder in Storage
-and run it again.
-
-### 4. Signing in during development
-
-If the owner account has no password set, or you would rather not type one
-thirty times a day, put this in `.env.local`:
-
-```
-DEV_AUTH_BYPASS=true
-OWNER_EMAIL=you@example.com
-```
-
-The login page then offers **Sign in without a password**, which mints a real
-Supabase session through the admin API and writes the normal session cookie.
-RLS, the proxy guard and every route behave exactly as they do for a real
-user — it is a shortcut past typing a password, not past authentication.
-
-It cannot reach production. The route, the button and the proxy exemption all
-require `NODE_ENV !== "production"`, which `next build` sets. Verified against
-a production build with `DEV_AUTH_BYPASS=true` still set: the button is absent
-from the page, an anonymous request is bounced to `/login`, and an
-*authenticated* request — where the proxy does let it through — gets a 404
-from the route itself.
-
-### 5. Demo data
-
-```bash
-npm run seed
-```
-
-Creates `sarah@rapport.demo` / `rapport-demo-123` with 8 companies, 14 people,
-5 meetings, 9 follow-ups and the saved facts the demo script leans on. One
-meeting is deliberately left in `review` so the dashboard inbox is not empty.
+Benchmark harness, per-clip results and charts:
+[github.com/Khawpuneiei/WhisperLah](https://github.com/Khawpuneiei/WhisperLah).
+How it is built, trained, evaluated and served:
+[WhisperLah technical report (PDF)](https://github.com/Khawpuneiei/WhisperLah/blob/main/docs/WhisperLah-Technical-Report.pdf).
 
 ---
 
