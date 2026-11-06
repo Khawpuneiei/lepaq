@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { safeNext } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
@@ -22,7 +23,6 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/dashboard";
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
@@ -58,7 +58,9 @@ export function LoginForm({
         if (error) throw error;
       }
 
-      router.push(next);
+      // only a path on this site (lib/safe-next.ts); read here, since `window`
+      // does not exist while /login prerenders
+      router.push(safeNext(params.get("next"), window.location.origin));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in.");

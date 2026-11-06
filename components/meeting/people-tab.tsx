@@ -154,7 +154,8 @@ export function PeopleTab({
                   ))}
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Approved facts appear on their profile. Nothing else does.
+                  Approved facts go on their profile, next to the follow-ups
+                  from your meetings with them.
                 </p>
               </div>
             )}

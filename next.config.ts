@@ -18,6 +18,44 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/api/meetings/[id]/process": ["./node_modules/ffmpeg-static/ffmpeg"],
   },
+
+  poweredByHeader: false,
+
+  /**
+   * One set for every route, deliberately. A header that limits what a page
+   * may do (Permissions-Policy here, a CSP later) belongs to the document, and
+   * a soft navigation keeps the document: a stricter rule on "/" alone would
+   * follow a visitor into /login and the recorder until they reloaded.
+   *
+   * - SAMEORIGIN, not DENY: /demo frames /demo/frame.
+   * - microphone=(self): the in-browser recorder needs it; nothing else does.
+   * - HSTS is left to Vercel, which sets it on every custom domain.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), geolocation=(), microphone=(self), browsing-topics=()",
+          },
+        ],
+      },
+      {
+        // a shared meeting summary is for the person it was sent to, not for
+        // search engines; its link token must not leak out in a Referer either
+        source: "/s/:path*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

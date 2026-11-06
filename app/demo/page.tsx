@@ -5,6 +5,8 @@ import { DemoPlayer } from "@/components/demo/player";
 export const metadata: Metadata = {
   title: "Lepaq · product walkthrough",
   description: "A 71-second walkthrough of Lepaq, played by the real app with made-up data.",
+  // one address for the walkthrough, whatever ?capture says
+  alternates: { canonical: "/demo" },
 };
 
 /**

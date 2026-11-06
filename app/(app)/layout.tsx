@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { Toaster } from "@/components/ui/sonner";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -19,8 +20,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     .maybeSingle();
 
   return (
-    <AppShell name={profile?.full_name ?? ""} email={user.email ?? ""}>
-      {children}
-    </AppShell>
+    <>
+      <AppShell name={profile?.full_name ?? ""} email={user.email ?? ""}>
+        {children}
+      </AppShell>
+      <Toaster richColors closeButton position="top-right" />
+    </>
   );
 }

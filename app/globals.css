@@ -286,6 +286,13 @@
   html {
     @apply font-sans;
   }
+  /* the landing page's header is sticky (4rem, h-16): anything scrolled to,
+     by an in-page link or by moving focus, stops below it instead of behind
+     it. Browsers without :has() get per-target margins instead
+     (components/landing/landing.module.css, .anchor) */
+  html:has(#story) {
+    scroll-padding-top: 4rem;
+  }
 }
 
 @layer components {
