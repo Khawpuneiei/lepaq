@@ -2,17 +2,21 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { GoogleIcon } from "@/components/layout/google-icon";
+import { continueWithGoogle } from "@/lib/auth/google";
+import { GUEST_MEETING_LIMIT } from "@/lib/constants";
 import { safeNext } from "@/lib/safe-next";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
+type Busy = null | "email" | "google" | "guest";
 
 export function LoginForm({
   devBypass = false,
@@ -23,17 +27,48 @@ export function LoginForm({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  // only a path on this site (lib/safe-next.ts); read when a button is
+  // pressed, since `window` does not exist while /login prerenders
+  const next = () => safeNext(params.get("next"), window.location.origin);
 
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
+
+  async function google() {
+    setBusy("google");
+    setError(null);
+    const problem = await continueWithGoogle(createClient(), next());
+    // on success the browser is already on its way to Google
+    if (problem) {
+      setError(problem);
+      setBusy(null);
+    }
+  }
+
+  async function guest() {
+    setBusy("guest");
+    setError(null);
+    const { error } = await createClient().auth.signInAnonymously();
+    if (error) {
+      setError(
+        error.code === "anonymous_provider_disabled"
+          ? "Guest sign-in is switched off in Supabase (Authentication → Sign In / Providers → Allow anonymous sign-ins)."
+          : error.message,
+      );
+      setBusy(null);
+      return;
+    }
+    router.push(next());
+    router.refresh();
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
+    setBusy("email");
     setError(null);
 
     const supabase = createClient();
@@ -58,14 +93,12 @@ export function LoginForm({
         if (error) throw error;
       }
 
-      // only a path on this site (lib/safe-next.ts); read here, since `window`
-      // does not exist while /login prerenders
-      router.push(safeNext(params.get("next"), window.location.origin));
+      router.push(next());
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign in.");
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   }
 
@@ -80,7 +113,28 @@ export function LoginForm({
           : "One account, just for you. No team admin to ask."}
       </p>
 
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <Button
+        type="button"
+        variant="outline"
+        className="mt-8 w-full"
+        onClick={google}
+        disabled={busy !== null}
+      >
+        {busy === "google" ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <GoogleIcon className="size-4" />
+        )}
+        Continue with Google
+      </Button>
+
+      <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border" />
+        or with email
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-4">
         {mode === "signup" && (
           <div className="space-y-2">
             <Label htmlFor="fullName">Your name</Label>
@@ -129,11 +183,35 @@ export function LoginForm({
           </Alert>
         )}
 
-        <Button type="submit" className="w-full" disabled={busy}>
-          {busy && <Loader2 className="size-4 animate-spin" />}
+        <Button type="submit" className="w-full" disabled={busy !== null}>
+          {busy === "email" && <Loader2 className="size-4 animate-spin" />}
           {mode === "signin" ? "Sign in" : "Create account"}
         </Button>
       </form>
+
+      <div className="mt-6 rounded-md border p-4">
+        <p className="text-sm font-medium">Just trying it out?</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {GUEST_MEETING_LIMIT === 0
+            ? "Look around as a guest, no email needed. Continue with Google when you want to process a meeting."
+            : "Look around and process one meeting as a guest, no email needed. Continue with Google later to keep what you made."}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-3 -ml-2.5"
+          onClick={guest}
+          disabled={busy !== null}
+        >
+          {busy === "guest" ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <UserRound className="size-4" />
+          )}
+          Continue as guest
+        </Button>
+      </div>
 
       {devBypass && (
         <div className="mt-6 rounded-md border border-dashed border-butter-strong bg-butter-soft p-4 dark:bg-butter">

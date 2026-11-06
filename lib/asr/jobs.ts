@@ -129,6 +129,21 @@ function isJobResult(value: unknown): value is JobResult {
   );
 }
 
+/**
+ * startTranscriptionJob failed before the GPU service took the job: nothing
+ * was spent, so a guest's try is given back. A post that timed out is not
+ * one of these, since the service may have queued it all the same.
+ */
+export class JobNotStarted extends Error {}
+
+/** How /process pays for a step that costs something (the guest limit). */
+export interface Spend {
+  /** just before; if it throws, nothing has been changed */
+  charge: () => Promise<void>;
+  /** after a charge that turned out to spend nothing */
+  refund: () => Promise<void>;
+}
+
 export type ProcessOutcome =
   | { complete: true; reused: true; segments: number; speakers: number }
   | { complete: false; queued: true; job_id: string };
@@ -139,6 +154,10 @@ export type ProcessOutcome =
  *  2. the GPU already transcribed it and a later step failed: carry on from
  *     the stored transcript, which costs no GPU time and needs no audio;
  *  3. otherwise send the recording as a new job.
+ *
+ * spend.charge runs just before 2 or 3, the steps that cost something;
+ * spend.refund when it then turns out another request got there first, or
+ * the service never took the job.
  */
 export async function processWithJob(
   admin: SupabaseClient,
@@ -149,6 +168,7 @@ export async function processWithJob(
     audio_deleted_at: string | null;
   },
   now = Date.now(),
+  spend?: Spend,
 ): Promise<ProcessOutcome> {
   const { data: latest } = await admin
     .from("transcription_jobs")
@@ -181,6 +201,8 @@ export async function processWithJob(
       return { complete: false, queued: true, job_id: latest.id };
     }
 
+    await spend?.charge();
+
     // Take it over. Moving completed_at is the lease: a second Retry fails
     // this update, and the stall check measures from here.
     let lease = admin
@@ -189,7 +211,10 @@ export async function processWithJob(
       .eq("id", latest.id);
     lease = latest.completed_at ? lease.eq("completed_at", latest.completed_at) : lease.is("completed_at", null);
     const { data: leased } = await lease.select("id");
-    if (!leased?.length) return { complete: false, queued: true, job_id: latest.id };
+    if (!leased?.length) {
+      await spend?.refund();
+      return { complete: false, queued: true, job_id: latest.id };
+    }
 
     await admin
       .from("meetings")
@@ -211,35 +236,52 @@ export async function processWithJob(
     );
   }
 
+  await spend?.charge();
+
   // status first: a callback only carries forward a meeting that is transcribing
   await admin
     .from("meetings")
     .update({ status: "transcribing", error: null, progress_note: COLD_START_NOTE })
     .eq("id", meeting.id);
 
-  const jobId = await startTranscriptionJob(admin, { id: meeting.id, audio_path: meeting.audio_path }, now);
-  return { complete: false, queued: true, job_id: jobId };
+  let started: { jobId: string; fresh: boolean };
+  try {
+    started = await startTranscriptionJob(admin, { id: meeting.id, audio_path: meeting.audio_path }, now);
+  } catch (err) {
+    if (err instanceof JobNotStarted) await spend?.refund();
+    throw err;
+  }
+  // a second click a moment ago already started (and paid for) this one
+  if (!started.fresh) await spend?.refund();
+  return { complete: false, queued: true, job_id: started.jobId };
 }
 
 /**
  * Create a job for this meeting's recording and hand it to the service.
  * Returns once the service has queued it; the transcript arrives later.
+ * fresh is false when another request had already started one, which is
+ * returned instead. Throws JobNotStarted when the service never got it.
  */
 export async function startTranscriptionJob(
   admin: SupabaseClient,
   meeting: { id: string; audio_path: string },
   now = Date.now(),
-): Promise<string> {
+): Promise<{ jobId: string; fresh: boolean }> {
   // everything that can fail on its own goes before the insert, so a
   // misconfiguration never leaves a job row behind
-  const { url, token } = config();
-  const callback = callbackUrl();
+  let url: string, token: string, callback: string;
+  try {
+    ({ url, token } = config());
+    callback = callbackUrl();
+  } catch (err) {
+    throw new JobNotStarted(err instanceof Error ? err.message : String(err));
+  }
 
   const { data: signed, error: signError } = await admin.storage
     .from(AUDIO_BUCKET)
     .createSignedUrl(meeting.audio_path, AUDIO_URL_TTL_SECONDS);
   if (signError || !signed) {
-    throw new Error(`Could not sign the audio URL: ${signError?.message ?? "no URL returned"}`);
+    throw new JobNotStarted(`Could not sign the audio URL: ${signError?.message ?? "no URL returned"}`);
   }
 
   const { count: participantCount } = await admin
@@ -269,10 +311,10 @@ export async function startTranscriptionJob(
       .eq("meeting_id", meeting.id)
       .in("status", ["queued", "running"])
       .maybeSingle();
-    if (open) return open.id as string;
+    if (open) return { jobId: open.id as string, fresh: false };
   }
   if (insertError || !job) {
-    throw new Error(`Could not record the transcription job: ${insertError?.message ?? "no row"}`);
+    throw new JobNotStarted(`Could not record the transcription job: ${insertError?.message ?? "no row"}`);
   }
 
   let res: Response;
@@ -303,10 +345,10 @@ export async function startTranscriptionJob(
     const detail = (await res.text().catch(() => "")).slice(0, 200);
     const message = `The transcription service refused the job (${res.status}): ${detail}`;
     await closeJob(admin, job.id, message);
-    throw new Error(message);
+    throw new JobNotStarted(message);
   }
 
-  return job.id as string;
+  return { jobId: job.id as string, fresh: true };
 }
 
 /** Ask the service where a job is. Used when a callback has not arrived. */

@@ -34,7 +34,10 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="Settings" description={user.email ?? undefined} />
+      <PageHeader
+        title="Settings"
+        description={user.is_anonymous ? "Guest account" : (user.email ?? undefined)}
+      />
 
       <div className="space-y-6">
         <ProfileForm

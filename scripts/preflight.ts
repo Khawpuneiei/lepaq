@@ -28,6 +28,7 @@ const TABLES = [
   "participant_reads",
   "person_facts",
   "interest_columns",
+  "guest_meetings",
 ];
 
 const BACKEND = process.env.TRANSCRIBE_BACKEND || "jobs";
@@ -53,6 +54,7 @@ const START_MIGRATION: Record<string, string> = {
   interest_columns: "0002_people_and_interests.sql",
   speaker_embeddings: "0004_speaker_embeddings.sql",
   transcription_jobs: "0005_transcription_jobs.sql",
+  guest_meetings: "0006_guest_meetings.sql",
 };
 
 let failures = 0;

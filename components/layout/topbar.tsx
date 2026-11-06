@@ -14,6 +14,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { LepaqLogo } from "@/components/layout/logo";
@@ -22,9 +30,19 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { createClient } from "@/lib/supabase/client";
 import { initials } from "@/lib/utils";
 
-export function Topbar({ name, email }: { name: string; email: string }) {
+export function Topbar({
+  name,
+  email,
+  isGuest = false,
+}: {
+  name: string;
+  email: string;
+  isGuest?: boolean;
+}) {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // a guest account cannot be signed back into, so leaving it is confirmed
+  const [confirmGuestSignOut, setConfirmGuestSignOut] = useState(false);
 
   async function signOut() {
     await createClient().auth.signOut();
@@ -73,27 +91,50 @@ export function Topbar({ name, email }: { name: string; email: string }) {
             <Button variant="ghost" size="icon" aria-label="Account">
               <Avatar className="size-8">
                 <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                  {initials(name || email)}
+                  {initials(name || email || (isGuest ? "Guest" : ""))}
                 </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <div className="font-medium">{name || "Your account"}</div>
-              <div className="text-xs font-normal text-muted-foreground">{email}</div>
+              <div className="font-medium">{name || (isGuest ? "Guest" : "Your account")}</div>
+              <div className="text-xs font-normal text-muted-foreground">
+                {isGuest ? "Guest account" : email}
+              </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
               <Link href="/settings">Settings</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={signOut}>
+            <DropdownMenuItem onClick={isGuest ? () => setConfirmGuestSignOut(true) : signOut}>
               <LogOut className="size-4" />
               Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <Dialog open={confirmGuestSignOut} onOpenChange={setConfirmGuestSignOut}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign out of the guest account?</DialogTitle>
+            <DialogDescription>
+              A guest account has no email or password, so there is no way back
+              into it, and its meetings go with it. Continue with Google first,
+              from the banner at the top, to keep them.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmGuestSignOut(false)}>
+              Stay signed in
+            </Button>
+            <Button variant="destructive" onClick={signOut}>
+              Sign out and lose it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </header>
   );
 }

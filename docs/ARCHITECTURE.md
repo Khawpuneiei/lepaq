@@ -108,6 +108,20 @@ approved action items), and returns 404 unless `approved_at` is set.
   middleware) refreshes the session on every request and redirects signed-out
   visitors to `/login`, except for public prefixes: `/login`, `/auth`, `/s/`,
   `/demo`, the transcription callback and `/api/cron/`.
+- **Google and guests.** `/login` signs in with a password, with Google
+  (`lib/auth/google.ts`, PKCE) or as a guest (`signInAnonymously`, a
+  Supabase anonymous user). Google returns to
+  `app/(auth)/auth/callback/route.ts`. If the browser was a guest, the
+  callback calls `rapport_adopt_guest` (`0006`) with the service role. That
+  function moves the guest's rows into the Google account and deletes the
+  guest, unless the account already has meetings, companies, people or a
+  password. When nothing moves, the new session is revoked and the guest
+  keeps its cookie. Supabase's manual identity linking is not used.
+- **Guest limits.** Before each paid step, `lib/auth/guest.ts` calls
+  `rapport_guest_charge` (`0006`): one meeting per guest, then
+  `GUEST_TRANSCRIBE_RUNS` transcriptions and `GUEST_ANALYSIS_RUNS` reports.
+  The counts live in `guest_meetings`, which users can neither read nor
+  write.
 - **Routes do not trust the proxy.** Every `/api/meetings/[id]/*` route calls
   `requireUser` and `requireOwnedMeeting` (`lib/api.ts`), which looks the
   meeting up with `owner_id = user.id`.
@@ -117,8 +131,8 @@ approved action items), and returns 404 unless `approved_at` is set.
   is select-only for users, with writes revoked (`0005`). Storage policies
   key off the first folder of the object path being the user's id.
 - **Service role.** `lib/supabase/admin.ts` bypasses RLS. Its header comment
-  limits it to the pipeline, the share page and the seed script, and the
-  pipeline routes check ownership before using it. `import "server-only"`
+  limits it to the pipeline, the share page, guest accounts and the seed
+  script, and the pipeline routes check ownership before using it. `import "server-only"`
   makes a client-side import a build error.
 - **Dev sign-in.** `app/api/dev/login/route.ts` mints a real session for
   `OWNER_EMAIL`, but only when `NODE_ENV !== "production"` and
@@ -150,6 +164,8 @@ Both calls go through `structuredCall` in `lib/ai/respond.ts`:
 
 - Each pipeline route catches errors, sets the meeting to `failed` with
   `friendlyError(err)` (`lib/api.ts`), and returns JSON. The UI shows Retry.
+  A guest over a limit (`GuestRefusal`) is told why, without failing a
+  meeting that is finished or that another request is working on.
 - **Lost callback.** `GET /status` (polled by the open page) calls
   `reconcileMeeting`: once a job has been quiet for 2 minutes it asks
   `GET {WHISPERLAH_URL}/jobs/{id}`; after 2 hours it fails the job

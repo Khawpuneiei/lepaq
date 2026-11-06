@@ -16,12 +16,12 @@ import { findOrCreatePerson } from "@/lib/people";
  * speaker fix or a deleted transcript line.
  *
  * Takes a service-role client: the caller has already proved ownership.
+ * Everything it writes is filed under whoever owns the meeting when the
+ * report comes back, not whoever asked: a guest who continues with Google
+ * while Claude is writing hands the meeting to the Google account
+ * meanwhile (rapport_adopt_guest), and the guest no longer exists.
  */
-export async function runAnalysis(
-  admin: SupabaseClient,
-  meetingId: string,
-  userId: string,
-) {
+export async function runAnalysis(admin: SupabaseClient, meetingId: string) {
   await admin
     .from("meetings")
     .update({ status: "analyzing", error: null, progress_note: "Writing your report" })
@@ -54,7 +54,7 @@ export async function runAnalysis(
     admin
       .from("status_options")
       .select("label, sort_order")
-      .eq("owner_id", userId)
+      .eq("owner_id", meeting.owner_id)
       .eq("applies_to", "company")
       .order("sort_order", { ascending: true }),
     // the user's Table of Interest columns, so the model prefers keys that
@@ -62,7 +62,7 @@ export async function runAnalysis(
     admin
       .from("interest_columns")
       .select("key, label, categories, sort_order")
-      .eq("owner_id", userId)
+      .eq("owner_id", meeting.owner_id)
       .order("sort_order", { ascending: true }),
   ]);
 
@@ -153,6 +153,15 @@ export async function runAnalysis(
     })),
   });
 
+  // the call takes a while; see the note at the top
+  const { data: owner } = await admin
+    .from("meetings")
+    .select("owner_id")
+    .eq("id", meetingId)
+    .maybeSingle();
+  if (!owner) throw new ApiError("The meeting was deleted while its report was being written.", 404);
+  const ownerId: string = owner.owner_id;
+
   // ---- link participants to the people they already are --------------------
   // findOrCreatePerson, not insert: a second meeting with the same person must
   // land on the same profile, otherwise everything learned about them ends up
@@ -163,7 +172,7 @@ export async function runAnalysis(
     if (p.person_id || p.is_me) continue;
 
     const personId = await findOrCreatePerson(admin, {
-      ownerId: userId,
+      ownerId,
       fullName: p.display_name,
       companyId: meeting.company_id,
       position: p.position,
@@ -207,20 +216,28 @@ export async function runAnalysis(
     .eq("approved", false);
 
   if (analysis.action_items.length) {
-    await admin.from("action_items").insert(
-      analysis.action_items.map((a) => ({
-        meeting_id: meetingId,
-        owner_id: userId,
-        person_id: a.assignee_name
-          ? (participantByName.get(a.assignee_name)?.person_id ?? null)
-          : null,
-        title: a.title,
-        assignee_name: a.assignee_name,
-        due_date: a.due_date,
-        evidence_idx: a.evidence_idx >= 0 ? a.evidence_idx : null,
-        approved: false,
-      })),
-    );
+    const items = analysis.action_items.map((a) => ({
+      meeting_id: meetingId,
+      owner_id: ownerId,
+      person_id: a.assignee_name
+        ? (participantByName.get(a.assignee_name)?.person_id ?? null)
+        : null,
+      title: a.title,
+      assignee_name: a.assignee_name,
+      due_date: a.due_date,
+      evidence_idx: a.evidence_idx >= 0 ? a.evidence_idx : null,
+      approved: false,
+    }));
+    let { error } = await admin.from("action_items").insert(items);
+    // a due date Postgres will not take (22007 bad format, 22008 out of
+    // range) is dropped rather than losing the report Claude was paid for
+    if (error?.code === "22007" || error?.code === "22008") {
+      console.warn("[analysis] dropped due dates Postgres refused", meetingId, error.message);
+      ({ error } = await admin
+        .from("action_items")
+        .insert(items.map((item) => ({ ...item, due_date: null }))));
+    }
+    if (error) throw new ApiError(`Could not save the action items: ${error.message}`, 500);
   }
 
   await admin.from("participant_reads").delete().eq("meeting_id", meetingId);
@@ -253,7 +270,7 @@ export async function runAnalysis(
     if (!participant.person_id) continue;
     for (const f of person.facts) {
       facts.push({
-        owner_id: userId,
+        owner_id: ownerId,
         person_id: participant.person_id,
         meeting_id: meetingId,
         category: f.category,

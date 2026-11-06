@@ -15,14 +15,6 @@ For how a meeting moves through the code, file by file, see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The schema is in
 [Data model](#data-model).
 
----
-
-## Live app
-
-Lepaq is deployed at **[lepaq-ai.vercel.app](https://lepaq-ai.vercel.app/)**
-(Vercel, deployed from `main`).
-
----
 
 ## Speech recognition: WhisperLah
 
@@ -133,8 +125,8 @@ example at mermaid.live) when the diagram changes.
 
 ## Data model
 
-Sixteen tables in `public`, from `supabase/migrations/0001`-`0005`, plus
-Supabase's own `auth.users`. Every arrow is a foreign key in the SQL (27 in
+Seventeen tables in `public`, from `supabase/migrations/0001`-`0006`, plus
+Supabase's own `auth.users`. Every arrow is a foreign key in the SQL (28 in
 all); a ring on the parent side means the column is nullable.
 
 ```mermaid
@@ -147,6 +139,7 @@ erDiagram
     auth_users ||--o{ action_items : "owns"
     auth_users ||--o{ person_facts : "owns"
     auth_users ||--o{ interest_columns : "owns"
+    auth_users ||--o| guest_meetings : "counted in, as a guest"
 
     status_options |o--o{ companies : "status of"
     status_options |o--o{ people : "status of"
@@ -297,6 +290,12 @@ erDiagram
         text label
         text_array categories
     }
+    guest_meetings {
+        uuid user_id PK, FK "one row per guest"
+        uuid meeting_id "no FK, on purpose"
+        int transcriptions
+        int analyses
+    }
 ```
 
 Design choices that are in the SQL, not just in the app:
@@ -308,6 +307,7 @@ Design choices that are in the SQL, not just in the app:
 - **Full-text search on transcripts.** A GIN index on `to_tsvector('english', text)` over `transcript_segments` (`0001`).
 - **pgvector for voiceprints.** `speaker_embeddings.embedding` is an untyped `vector` with a check that `vector_dims(embedding) = dim`, and `model` is part of the unique key so vectors from different embedders are never mixed (`0004`).
 - **No duplicate people or companies.** Unique indexes on `lower(trim(name))` per owner (and per company for people, with `coalesce` so a null company still collides) (`0002`).
+- **Guest limits only the server can change.** `guest_meetings` has RLS on and no policy, and `rapport_guest_charge` and `rapport_adopt_guest` cannot be called by `anon` or `authenticated`. It has no foreign key to `meetings`, so deleting a meeting does not reset the count, and the charge locks the guest's row so two requests at once count one after the other (`0006`).
 - **Sensitive facts blocked in the database too.** `person_facts.category` must match `^[a-z][a-z0-9_]{0,38}$` and is not allowed to be health, religion, politics, ethnicity, sexuality, finances and the like (`0003`).
 
 ---
@@ -679,7 +679,8 @@ advice before putting real customer data in it. This is not legal advice.
    to match, since the share dialog builds links from it, and the landing
    page's preview card, canonical URL and sitemap do too. Those are read at
    build time, so redeploy after changing it. Then run
-   `npm run check:landing -- --base=https://<your-domain>`.
+   `npm run check:landing -- --base=https://<your-domain>`. Google and guest
+   sign-in need the settings in **Google and guest sign-in** above.
 
 **Function size.** `ffmpeg-static` is around 78MB on Linux. `next.config.ts`
 traces that one binary into the `/process` function; ffprobe is not shipped
@@ -697,7 +698,7 @@ Hobby is for non-commercial use. Fine for demos and user interviews.
 app/
   (landing)/      the public landing page at /
   (app)/          dashboard, meetings, people, companies, follow-ups, settings
-  (auth)/login
+  (auth)/         login; auth/callback, where Google sends people back; auth/error, which explains a failed sign-in
   api/meetings/   create, process, status, analyze, approve, share, audio, regenerate
   api/transcription/callback   where the GPU service reports a finished job
   api/cron/transcription-jobs  daily sweep for jobs whose callback never came
@@ -711,7 +712,7 @@ lib/
   pipeline/       finishTranscription (after any transcript), runAnalysis (analyze, regenerate)
   supabase/       client (browser), server (RSC), admin (service role)
 docs/             architecture.png, landing-page-plan.md
-supabase/migrations/  0001-0005, run in order
+supabase/migrations/  0001-0006, run in order
 scripts/          preflight, e2e, try-pipeline, seed, check-audio, check-landing
 proxy.ts          auth guard — Next 16 renamed middleware to proxy
 ```

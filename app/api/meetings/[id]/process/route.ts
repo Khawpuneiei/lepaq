@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/transcribe";
 import { finishTranscription } from "@/lib/pipeline/finishTranscription";
 import { processWithJob } from "@/lib/asr/jobs";
+import { chargeGuest, claimGuestMeeting, GuestRefusal, refundGuestTranscription } from "@/lib/auth/guest";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -59,13 +60,23 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
       throw new ApiError("This meeting has already been analysed.", 409);
     }
 
+    // A guest gets one meeting, refused here before anything changes, and a
+    // few tries at it, counted where the money is spent
+    await claimGuestMeeting(admin, user, meeting.id);
+    const spend = {
+      charge: () => chargeGuest(admin, user, meeting.id, "transcribe"),
+      refund: () => refundGuestTranscription(admin, user, meeting.id),
+    };
+
     // ---- whole-file job on the GPU service ---------------------------------
     // Nothing is downloaded or split here: the service fetches the audio from
     // a signed URL and reports back to /api/transcription/callback. Calling
     // this again while a job is in flight does not start a second one, and a
     // Retry after a later step failed reuses the transcript it already made.
     if (TRANSCRIBE_BACKEND === "jobs") {
-      return NextResponse.json(await processWithJob(admin, meeting));
+      return NextResponse.json(
+        await processWithJob(admin, meeting, Date.now(), spend),
+      );
     }
 
     if (!meeting.audio_path) {
@@ -77,6 +88,9 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
         410,
       );
     }
+
+    // every call here downloads and transcribes (or finishes) something
+    await spend.charge();
 
     await admin
       .from("meetings")
@@ -245,7 +259,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
       speakers,
     });
   } catch (err) {
-    await admin
+    let failed = admin
       .from("meetings")
       .update({
         status: "failed",
@@ -253,6 +267,12 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/meetings/[
         progress_note: null,
       })
       .eq("id", id);
+    // A guest refused here is told why on a meeting that is waiting or has
+    // failed, but one that another request is working on (a second tab's
+    // Retry) is left alone: marking it failed would make the job's callback
+    // drop the transcript that request paid for.
+    if (err instanceof GuestRefusal) failed = failed.in("status", ["uploaded", "failed"]);
+    await failed;
     return apiError(err);
   } finally {
     if (workDir) await cleanupWorkDir(workDir);
