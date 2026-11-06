@@ -17,87 +17,35 @@ For how a meeting moves through the code, file by file, see
 
 ---
 
-## Quick start
+## Live app
 
-```bash
-npm install
-cp .env.example .env.local   # then fill it in, see below
-npm run dev
-```
+Lepaq is deployed at **[lepaq-ai.vercel.app](https://lepaq-ai.vercel.app/)**
+(Vercel, deployed from `main`).
 
-The app will not do anything useful until Supabase is set up.
+---
 
-### 1. Supabase
+## Speech recognition: WhisperLah
 
-1. Create a project at [supabase.com](https://supabase.com).
-2. Open the SQL editor and run every file in `supabase/migrations`, in
-   order, each in full:
-   - `0001_init.sql` creates the base tables and their row level security
-     policies, the private `meeting-audio` storage bucket with its policies,
-     and the trigger that gives each new user the default status lists;
-   - `0002` and `0003` stop duplicate people and companies, and add the
-     person-fact categories and the user's own Table of Interest columns;
-   - `0004` and `0005` add the speaker embeddings and the GPU job table that
-     transcription writes to.
+Lepaq transcribes meetings with **WhisperLah**, our own Singlish speech
+recognition model: a LoRA adapter on OpenAI's open `whisper-large-v3-turbo`,
+trained on IMDA's National Speech Corpus plus English meeting speech. It runs
+as an int8 CTranslate2 model on a GPU service, next to pyannote community-1
+for speaker labels (see [Architecture](#architecture)).
 
-   Run each once. A later file changes some things an earlier one set up,
-   so running an older file again on its own can undo them. Once
-   `.env.local` is complete (Claude and the GPU service below too),
-   `npm run preflight` checks that every table is there, and if one is
-   missing names the file to start from.
-3. Copy Project Settings → API into `.env.local`:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `SUPABASE_SERVICE_ROLE_KEY` — server only, never `NEXT_PUBLIC`
+- On seven contamination-checked Singlish test sets, it has the lowest word
+  error rate of the 18 systems tested (17 other open models and OpenAI API
+  settings) on five of them. That includes 14.8% on SASRBench-v1 (next best
+  15.8%, OpenAI GPT Transcribe) and 18.0% on NSC two-person conversation
+  (next best 25.2%). It is behind A*STAR's MERaLiON-2-3B on the two
+  read-speech sets.
+- It writes down 76% of Singlish discourse particles (lah, leh, lor …) on NSC
+  conversation, against 50% for the next best system.
+- The model weights are proprietary and are not published.
 
-### 2. Claude
-
-Add `ANTHROPIC_API_KEY`. Speaker mapping and the meeting report are both
-structured-output calls to Claude (`lib/ai/respond.ts`):
-
-| Variable | Default | Notes |
-|---|---|---|
-| `LLM_MODEL` | `claude-haiku-5-5` | Answers every call first. |
-| `LLM_FALLBACK_MODEL` | `claude-sonnet-5-5` | Asked only when the first model refuses, runs out of tokens, returns JSON that fails validation, or is rate limited / overloaded after the SDK's retries. Never on a 400. |
-| `LLM_EFFORT` | `medium` | `low` to `max`. Raise if coach output reads thin. |
-
-The report stores which model actually answered (`meeting_reports.model`).
-The system prompts are cached; no `temperature` or prefill is sent (both are
-rejected by these models).
-
-Transcription is separate: see **Whole-file jobs on the GPU service** below.
-
-### 3. Signing in during development
-
-If the owner account has no password set, or you would rather not type one
-thirty times a day, put this in `.env.local`:
-
-```
-DEV_AUTH_BYPASS=true
-OWNER_EMAIL=you@example.com
-```
-
-The login page then offers **Sign in without a password**, which mints a real
-Supabase session through the admin API and writes the normal session cookie.
-RLS, the proxy guard and every route behave exactly as they do for a real
-user — it is a shortcut past typing a password, not past authentication.
-
-It cannot reach production. The route, the button and the proxy exemption all
-require `NODE_ENV !== "production"`, which `next build` sets. Verified against
-a production build with `DEV_AUTH_BYPASS=true` still set: the button is absent
-from the page, an anonymous request is bounced to `/login`, and an
-*authenticated* request — where the proxy does let it through — gets a 404
-from the route itself.
-
-### 4. Demo data
-
-```bash
-npm run seed
-```
-
-Creates `sarah@rapport.demo` / `rapport-demo-123` with 8 companies, 14 people,
-5 meetings, 9 follow-ups and the saved facts the demo script leans on. One
-meeting is deliberately left in `review` so the dashboard inbox is not empty.
+Benchmark harness, per-clip results and charts:
+[github.com/Khawpuneiei/WhisperLah](https://github.com/Khawpuneiei/WhisperLah).
+How it is built, trained, evaluated and served:
+[WhisperLah technical report (PDF)](https://github.com/Khawpuneiei/WhisperLah/blob/main/docs/WhisperLah-Technical-Report.pdf).
 
 ---
 
