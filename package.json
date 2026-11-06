@@ -9,6 +9,7 @@
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "check:audio": "tsx --conditions=react-server scripts/check-audio.ts",
     "preflight": "tsx --conditions=react-server scripts/preflight.ts",
     "bootstrap": "tsx --conditions=react-server scripts/bootstrap.ts",
@@ -59,6 +60,7 @@
     "playwright-core": "^1.56.1",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.12"
   }
 }

@@ -35,4 +35,5 @@ jobs:
       # generates; `next typegen` writes them without a full build.
       - run: npx next typegen
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
