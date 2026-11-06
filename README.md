@@ -177,6 +177,187 @@ example at mermaid.live) when the diagram changes.
 
 ---
 
+## Data model
+
+Sixteen tables in `public`, from `supabase/migrations/0001`-`0005`, plus
+Supabase's own `auth.users`. Every arrow is a foreign key in the SQL (27 in
+all); a ring on the parent side means the column is nullable.
+
+```mermaid
+erDiagram
+    auth_users ||--o| profiles : "has"
+    auth_users ||--o{ status_options : "owns"
+    auth_users ||--o{ companies : "owns"
+    auth_users ||--o{ people : "owns"
+    auth_users ||--o{ meetings : "owns"
+    auth_users ||--o{ action_items : "owns"
+    auth_users ||--o{ person_facts : "owns"
+    auth_users ||--o{ interest_columns : "owns"
+
+    status_options |o--o{ companies : "status of"
+    status_options |o--o{ people : "status of"
+    companies |o--o{ people : "employs"
+    companies |o--o{ meetings : "is met in"
+
+    meetings ||--o{ meeting_participants : "has"
+    people |o--o{ meeting_participants : "attends as"
+    meetings ||--o{ transcript_segments : "has"
+    meetings ||--o{ speaker_mappings : "has"
+    meeting_participants |o--o{ speaker_mappings : "is voice"
+    meetings ||--o{ transcription_chunks : "split into"
+    meetings ||--o{ transcription_jobs : "sent as"
+    meetings ||--o{ speaker_embeddings : "has"
+    meetings ||--o| meeting_reports : "has"
+    meetings ||--o{ action_items : "produces"
+    people |o--o{ action_items : "assigned"
+    meetings ||--o{ participant_reads : "has"
+    people |o--o{ participant_reads : "read of"
+    people ||--o{ person_facts : "remembered"
+    meetings |o--o{ person_facts : "source of"
+
+    auth_users {
+        uuid id PK "managed by Supabase Auth"
+    }
+    profiles {
+        uuid id PK, FK
+        text full_name
+        boolean delete_audio_after_processing
+    }
+    status_options {
+        uuid id PK
+        uuid owner_id FK
+        text applies_to "company or person"
+        text label
+        boolean is_won
+    }
+    companies {
+        uuid id PK
+        uuid owner_id FK
+        uuid status_id FK
+        text name "unique per owner, case-insensitive"
+        text kind
+        numeric deal_value
+    }
+    people {
+        uuid id PK
+        uuid owner_id FK
+        uuid company_id FK
+        uuid status_id FK
+        text full_name "unique per owner and company"
+        text email
+    }
+    meetings {
+        uuid id PK
+        uuid owner_id FK
+        uuid company_id FK
+        text title
+        text status "uploaded to ready, or failed"
+        text audio_path
+        boolean consent_confirmed
+        text share_token UK
+    }
+    meeting_participants {
+        uuid id PK
+        uuid meeting_id FK
+        uuid person_id FK
+        text display_name
+        boolean is_me
+        text speaker_label
+    }
+    transcript_segments {
+        bigint id PK
+        uuid meeting_id FK
+        int idx
+        text raw_speaker_label
+        text speaker_label
+        numeric start_sec
+        text text "GIN full-text index"
+        boolean excluded
+    }
+    speaker_mappings {
+        uuid id PK
+        uuid meeting_id FK "unique with raw label"
+        uuid participant_id FK
+        text raw_speaker_label
+        boolean confirmed
+    }
+    transcription_chunks {
+        uuid id PK
+        uuid meeting_id FK "unique with chunk_index"
+        int chunk_index
+        text status
+        jsonb segments
+    }
+    transcription_jobs {
+        uuid id PK
+        uuid meeting_id FK "one open job per meeting"
+        text status "queued, running, done, failed"
+        timestamptz checked_at
+        jsonb result
+    }
+    speaker_embeddings {
+        uuid id PK
+        uuid meeting_id FK
+        text raw_speaker_label
+        text model
+        int dim
+        vector embedding "pgvector"
+    }
+    meeting_reports {
+        uuid meeting_id PK, FK
+        text summary
+        jsonb coach
+        jsonb talk_ratio
+        text model
+        timestamptz approved_at
+    }
+    action_items {
+        uuid id PK
+        uuid meeting_id FK
+        uuid owner_id FK
+        uuid person_id FK
+        text title
+        date due_date
+        boolean approved
+    }
+    participant_reads {
+        uuid id PK
+        uuid meeting_id FK
+        uuid person_id FK
+        text sentiment
+        int engagement "1 to 5"
+    }
+    person_facts {
+        uuid id PK
+        uuid owner_id FK
+        uuid person_id FK
+        uuid meeting_id FK
+        text category "open, sensitive ones blocked"
+        text fact
+        boolean approved
+    }
+    interest_columns {
+        uuid id PK
+        uuid owner_id FK "unique with key"
+        text key
+        text label
+        text_array categories
+    }
+```
+
+Design choices that are in the SQL, not just in the app:
+
+- **Owner-scoped rows under RLS.** Tables with an `owner_id` get an `own_rows` policy (`owner_id = auth.uid()`); meeting children get `via_meeting`, which checks the parent meeting's owner (`0001`, `0004`, `0005`).
+- **Jobs are read-only to users.** `transcription_jobs` has a select-only policy and `insert, update, delete` are revoked from `anon` and `authenticated`, so only the service role writes there (`0005`).
+- **One open job per meeting.** A partial unique index on `transcription_jobs (meeting_id) where status in ('queued','running')` means a double-clicked Retry cannot start two GPU jobs (`0005`).
+- **Raw and canonical speaker labels.** `transcript_segments` keeps the diariser's `raw_speaker_label` next to the confirmed `speaker_label`, and `speaker_mappings` is unique on `(meeting_id, raw_speaker_label)`, so speakers can be re-mapped without re-transcribing (`0001`).
+- **Full-text search on transcripts.** A GIN index on `to_tsvector('english', text)` over `transcript_segments` (`0001`).
+- **pgvector for voiceprints.** `speaker_embeddings.embedding` is an untyped `vector` with a check that `vector_dims(embedding) = dim`, and `model` is part of the unique key so vectors from different embedders are never mixed (`0004`).
+- **No duplicate people or companies.** Unique indexes on `lower(trim(name))` per owner (and per company for people, with `coalesce` so a null company still collides) (`0002`).
+- **Sensitive facts blocked in the database too.** `person_facts.category` must match `^[a-z][a-z0-9_]{0,38}$` and is not allowed to be health, religion, politics, ethnicity, sexuality, finances and the like (`0003`).
+
+---
+
 ## How a meeting flows through the system
 
 ```
