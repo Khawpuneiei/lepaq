@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { differenceInCalendarDays, parseISO } from "date-fns";
-import { CircleCheckBig } from "lucide-react";
+import { ArrowRight, CircleCheckBig } from "lucide-react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -44,7 +45,20 @@ function bucketOf(row: FollowUpRow): Bucket {
 const ORDER: Bucket[] = ["Overdue", "This week", "Later", "Done"];
 const ALL = "__all__";
 
-export function FollowUpsList({ rows: initial }: { rows: FollowUpRow[] }) {
+/** Where to go from an empty list, worked out from the user's meetings. */
+export interface FollowUpsNextStep {
+  href: string;
+  label: string;
+  note: string | null;
+}
+
+export function FollowUpsList({
+  rows: initial,
+  nextStep,
+}: {
+  rows: FollowUpRow[];
+  nextStep?: FollowUpsNextStep;
+}) {
   const [rows, setRows] = useState(initial);
   const [company, setCompany] = useState(ALL);
   const [assignee, setAssignee] = useState(ALL);
@@ -90,7 +104,22 @@ export function FollowUpsList({ rows: initial }: { rows: FollowUpRow[] }) {
       <EmptyState
         icon={CircleCheckBig}
         title="Nothing to follow up"
-        description="Approve a meeting report and the follow-ups you ticked will land here."
+        description={[
+          "Approve a meeting report and the follow-ups you ticked will land here.",
+          nextStep?.note,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        action={
+          nextStep && (
+            <Button asChild variant="outline">
+              <Link href={nextStep.href}>
+                {nextStep.label}
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          )
+        }
       />
     );
   }

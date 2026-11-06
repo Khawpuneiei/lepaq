@@ -36,7 +36,7 @@ export default async function MeetingsPage() {
         description="Everything you have captured, newest first."
       >
         <Button asChild>
-          <Link href="/meetings/new">New meeting</Link>
+          <Link href="/meetings/new">Upload recording</Link>
         </Button>
       </PageHeader>
 

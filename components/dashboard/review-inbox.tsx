@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, Users } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatDate } from "@/lib/utils";
+import { formatDate, pluralise } from "@/lib/utils";
 import type { Meeting } from "@/lib/types";
 
 /**
@@ -14,14 +14,19 @@ import type { Meeting } from "@/lib/types";
  */
 export function ReviewInbox({
   meetings,
+  processing = 0,
 }: {
   meetings: Pick<Meeting, "id" | "title" | "meeting_date" | "status" | "error">[];
+  /** Meetings still uploading, transcribing or being written up. */
+  processing?: number;
 }) {
   if (meetings.length === 0) {
     return (
       <Card className="p-6">
         <p className="text-sm text-muted-foreground">
-          Nothing waiting for you. Everything you have uploaded is approved.
+          {processing > 0
+            ? `Nothing to review yet. ${pluralise(processing, "meeting")} still processing; ${processing === 1 ? "it shows" : "they show"} up here when the report is ready.`
+            : "Nothing waiting for you. Every report so far is approved."}
         </p>
       </Card>
     );
