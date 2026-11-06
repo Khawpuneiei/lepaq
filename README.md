@@ -370,19 +370,32 @@ holds it.
 ## Landing page
 
 `/` is the public landing page (`app/(landing)/page.tsx`, sections in
-`components/landing/`). It is static, reads no session and runs no queries;
-`proxy.ts` lists it as an exact public path, so every other route still
-needs a sign-in. Signed-in or not, "Open Lepaq" goes to `/dashboard`, and the
-proxy sends a signed-out visitor through `/login?next=/dashboard`.
+`components/landing/`). It is static, reads no session and runs no queries.
+The session proxy does not run on it at all: the matcher in `proxy.ts` leaves
+out `/` and its prefetch forms, so the page never waits on Supabase. It leaves
+out the `/demo` walkthrough the page links to for the same reason, and the
+files crawlers fetch (`robots.txt`, `sitemap.xml`, the preview images,
+`.well-known/`) so they are not redirected to sign-in. Every app route still
+needs a sign-in. "Open Lepaq" goes to `/dashboard`, and the proxy sends a
+signed-out visitor through `/login?next=/dashboard`. Signed-in visitors see the
+same page; redirecting them from `/` would put Supabase back in front of it.
 
 The page is one scroll story (`components/landing/story.tsx`) that follows a
 single sample line from a coffee chat, "Send the proposal by Friday, can?".
 A sticky stage holds three scenes (the spoken line, the transcript and report,
 the person's page) while four chapters scroll past: Written down, Drafted,
-Your call, Remembered. Each chapter names the real meeting states it covers
-(`transcribing → awaiting_speakers`, `analyzing → review`, `review → ready`).
-On desktop the chapters sit in the stage's left column; below 1024px the stage
-pins to the top and the chapters scroll under it.
+Your call, Remembered. Each chapter names the statuses it covers with the
+app's own labels (Transcribing, Check speakers, Analysing, Needs review,
+Approved). On desktop the chapters sit in the stage's left column; below
+64rem (1024px at the usual text size) the stage pins to the top and the
+chapters scroll under it. On short screens below that width (a phone held
+sideways, a laptop at 150-200% zoom) the stage scrolls away with the page
+instead, since pinned it would leave no room to read. The breakpoints are in
+rem, like Tailwind's, so a larger default text size gets the layout that much
+text needs: a 1440px window at 200% text is laid out like a 720px one. The
+stage drops its least important lines as it gets shorter or narrower, so the
+Approve button and the open follow-up stay in view, and on a narrow stage
+with large text its titles shrink to fit their card rather than run out of it.
 
 Each step forward plays on the stage: the line settles into the transcript,
 the task, the date and the person lift out of it into the draft, approving
@@ -392,17 +405,69 @@ with the Web Animations API while the real one waits, invisible, where it
 lands. Scrolling back plays the first and last flights in reverse and fades
 the rest. Jumping several chapters at once, from the rail, a link or a reload
 on `#chapter-approved`, switches straight to the right state. With reduced
-motion on there are no flights, only the state changes. The stage is hidden
-from screen readers; each chapter carries a short text version of what it
-shows, and "Skip the story" goes to the benchmark.
+motion on there are no flights, only the state changes.
+
+The stage is an illustration. It is hidden from screen readers, and each
+chapter carries a text version of what it shows; "Skip the story" goes to the
+benchmark. It is marked `translate="no"`, because a page translator rewriting
+the text React swaps there crashes React. It only pins once the story's script
+has run, and an error boundary swaps in a plain page of the chapters if that
+script fails, so the words never depend on it.
 
 Everything here is local state and saves nothing. Jamie Tan and Harbour Studio
 are made up, and the page says so wherever they appear. The sections after the
-story fade in once, when scrolled to (`components/landing/reveal.tsx`).
+story rise in once, when scrolled to (`components/landing/reveal.tsx`). What
+is already on screen when the page wakes up is never hidden to play that
+entrance, and printing shows everything.
 
-The WhisperLah numbers in `components/landing/sections.tsx` are copied from
-the WhisperLah README results table. Update them in the same commit as that
-table, and keep the wording to "every model we tested".
+**Claims.** The page makes claims about accuracy and privacy. Check every
+change to one against the owner's claim review
+(`pitch-deck/overclaim-review.md` in the project files; it is not in this
+repo) and against the code that backs it:
+
+- The WhisperLah numbers in `components/landing/sections.tsx` are copied from
+  the WhisperLah README results table. Update them in the same commit as that
+  table, and keep the wording to "every model we tested".
+- Name the mode and the precision behind every comparison. Lepaq sends room
+  mode (`lib/asr/jobs.ts`), so the page leads with room-mode results.
+  SASRBench scores only the person wearing the mic, so its 14.8% is near-mic
+  mode, and room mode's 17.1% stands beside it. MERaLiON-2-10B was run in
+  4-bit. Café noise and speaker labels are not benchmarked yet, and the page
+  says so.
+- Production serves an int8 build of WhisperLah v3, within a point of the
+  evaluation numbers; `npm run preflight` prints the `model_version` it
+  answers with. If the served model changes, check the numbers on the page.
+- A privacy promise has to hold in the code: what waits for your approval,
+  what a share link shows, where audio is processed (Modal, US East) and
+  which model writes the report (Claude).
+
+**Metadata.** The preview image is `app/opengraph-image.png`, with its alt
+text in `app/opengraph-image.alt.txt`; `app/robots.ts` and `app/sitemap.ts`
+serve the crawler files. Their absolute links, the canonical URL and the
+structured data come from `lib/site.ts`: `NEXT_PUBLIC_APP_URL` first, then
+Vercel's production domain. Static pages read them at build time, so change
+the variable, then redeploy. Shared summaries at `/s/...` are `noindex`, and
+unfurl as a plain card: they set their own Open Graph tags, which drops the
+landing page's preview image.
+
+**Checking it.** With a build running (`npm run build && npm run start`),
+`npm run check:landing` drives a headless Chrome or Edge through the page:
+the metadata and crawler files, a shared summary's plain preview card, `/`
+and the walkthrough answering without the proxy, the security headers, the
+sign-in page's `?next=` cases, every chapter link at seven screen sizes and
+at 200% text, the stage keeping its Approve button in view with nothing
+printed over it, running out of its card or breaking where a flight lands,
+at twenty-six short, narrow or large-text sizes (the desktop ones again with
+the classic scrollbars Windows draws), the opening clear of the spoken line
+as the first scroll moves it, the closing picture of the app at the same
+sizes, the header keeping one row, Back after the page's #links and out of
+the walkthrough, a reload at the top staying there, the header's logo going
+back to the top, focus outlines and focus scrolling, a simulated page
+translator, reduced motion, printing, and the page with JavaScript off or
+with the story's script failing. Point it at a deploy with
+`npm run check:landing -- --base=https://<domain>`, or run part of it with
+`-- --only=tight,back`. The plan behind it, with the finding each check
+guards, is `docs/landing-page-plan.md`.
 
 ---
 
@@ -464,7 +529,9 @@ advice before putting real customer data in it. This is not legal advice.
 
 1. **GitHub** — push the repo. `.env*` is gitignored; `.env.example` is not.
 2. **Vercel** — import the repo, add every variable from `.env.example` for
-   Production and Preview, deploy.
+   Production and Preview, deploy. Leave out the local development block at
+   its end (`DEV_AUTH_BYPASS`, `OWNER_EMAIL`, `OWNER_USER_ID`): it is for your
+   machine and the scripts, and nothing in production needs it.
 3. **Fluid Compute** — Project → Settings → Functions. Required for
    `maxDuration = 300` to be honoured on Hobby. The routes that call Claude
    need the time: the job callback, `/status`, the cron and a Retry through
@@ -474,7 +541,10 @@ advice before putting real customer data in it. This is not legal advice.
 4. **Supabase URL config** — Authentication → URL Configuration. Set Site URL
    to your deployed domain and add `https://<your-domain>/**` to Redirect
    URLs, or login redirects break in production. Update `NEXT_PUBLIC_APP_URL`
-   to match, since the share dialog builds links from it.
+   to match, since the share dialog builds links from it, and the landing
+   page's preview card, canonical URL and sitemap do too. Those are read at
+   build time, so redeploy after changing it. Then run
+   `npm run check:landing -- --base=https://<your-domain>`.
 
 **Function size.** `ffmpeg-static` is around 78MB on Linux. `next.config.ts`
 traces that one binary into the `/process` function; ffprobe is not shipped
@@ -490,23 +560,24 @@ Hobby is for non-commercial use. Fine for demos and user interviews.
 
 ```
 app/
+  (landing)/      the public landing page at /
   (app)/          dashboard, meetings, people, companies, follow-ups, settings
   (auth)/login
   api/meetings/   create, process, status, analyze, approve, share, audio, regenerate
   api/transcription/callback   where the GPU service reports a finished job
   api/cron/transcription-jobs  daily sweep for jobs whose callback never came
-  s/[token]/      the only public page
+  s/[token]/      a shared meeting summary, public by link
 components/
-  layout/ dashboard/ meeting/ people/ shared/ ui/
+  landing/ layout/ dashboard/ meeting/ people/ shared/ ui/
 lib/
   ai/             transcribe, claude, mapSpeakers, analyze, prompts, schema, respond
   asr/jobs.ts     whole-file jobs on the GPU service
   audio/chunk.ts  the long-audio splitter (per-part backend)
   pipeline/       finishTranscription (after any transcript), runAnalysis (analyze, regenerate)
   supabase/       client (browser), server (RSC), admin (service role)
-docs/             architecture.png
+docs/             architecture.png, landing-page-plan.md
 supabase/migrations/  0001-0005, run in order
-scripts/          preflight, e2e, try-pipeline, seed, check-audio
+scripts/          preflight, e2e, try-pipeline, seed, check-audio, check-landing
 proxy.ts          auth guard — Next 16 renamed middleware to proxy
 ```
 
@@ -527,6 +598,8 @@ npm run preflight     # env, tables, bucket, Claude key and the GPU service, wit
 npm run e2e -- a.m4a  # create, upload, process, analyze, approve, share, public page, against the dev server
 npm run check:audio   # long-audio splitter smoke test
 npm run demo:record   # render /demo to demo-out/lepaq-demo.mp4 (app must be running)
+npm run check:landing # the landing page in a headless browser (app must be running; -- --base=<url>)
+npm run check:pages   # every app screen against live data, signed in as OWNER_EMAIL (dev server running)
 ```
 
 ---

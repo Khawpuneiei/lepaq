@@ -24,10 +24,23 @@ import { APP_HREF, BENCHMARK_HREF, SAMPLE, WALKTHROUGH_HREF } from "./sample";
  *
  * Every product claim here is something the app does today (see the README
  * and lib/), and every model number is copied from the public WhisperLah
- * results table. Change a number only when that table changes.
+ * results table. Change a number only when that table changes, and check any
+ * new claim against pitch-deck/overclaim-review.md first.
  */
 
-const WRAP = "mx-auto w-full max-w-[1320px] px-5 sm:px-8 lg:px-12";
+const WRAP = "mx-auto w-full max-w-[82.5rem] px-5 sm:px-8 lg:px-12";
+
+/**
+ * A real outline, not a box-shadow ring: --ring clears 3:1 on the page, on
+ * white and on the ink band, and outlines survive Windows high contrast. No
+ * `outline-none` with it: in Tailwind 4 that would cancel the outline style.
+ */
+const FOCUS = "rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
+
+/** For links that open GitHub in a new tab. */
+function NewTab() {
+  return <span className="sr-only"> (opens in a new tab)</span>;
+}
 
 const NAV = [
   { href: "#chapter-written", label: "How it works" },
@@ -37,42 +50,51 @@ const NAV = [
 
 export function LandingNav() {
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-md supports-[backdrop-filter]:bg-background/70">
+    // 95% opaque even where blur works: the dark band scrolling under it would
+    // otherwise drag the links below 4.5:1
+    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/95 backdrop-blur-md">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-card"
       >
         Skip to content
       </a>
-      <div className={cn(WRAP, "flex h-16 items-center justify-between gap-6")}>
-        <Link href="/" aria-label="Lepaq, home" className="rounded outline-none focus-visible:ring-3 focus-visible:ring-ring/60">
-          <LepaqLogo className="text-[1.4rem]" />
-        </Link>
+      {/* one row at any text size (--nav-h assumes 4rem): on a narrow screen,
+          or with large text, the gaps close, the arrow goes first, then the
+          wordmark (the link's name stays "Lepaq, home") */}
+      <div className={cn(WRAP, styles.navRow, "flex h-16 items-center justify-between gap-3 sm:gap-6")}>
+        {/* this page is home, so the logo goes to its top, as "Read the story
+            again" does: a Link to "/" only took the # off the address and
+            left a reader far down the page where they were [REV-29] */}
+        <a href="#top" aria-label="Lepaq, home" className={cn(FOCUS, "min-w-0")}>
+          <LepaqLogo className="text-[1.4rem]" wordmarkClassName="max-[15.5rem]:hidden" />
+        </a>
         <nav aria-label="Page sections" className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
           {NAV.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="rounded outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/60"
-            >
+            <a key={item.href} href={item.href} className={cn(FOCUS, "transition-colors hover:text-foreground")}>
               {item.label}
             </a>
           ))}
         </nav>
-        <div className="flex items-center gap-4">
+        <div className="flex shrink-0 items-center gap-4">
+          {/* no prefetch: /demo renders per request, and most visitors never open it */}
           <Link
             href={WALKTHROUGH_HREF}
-            className="hidden rounded text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/60 lg:inline"
+            prefetch={false}
+            className={cn(FOCUS, "hidden text-sm text-muted-foreground transition-colors hover:text-foreground lg:inline")}
           >
             Walkthrough
           </Link>
           <Link
             href={APP_HREF}
             prefetch={false}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground outline-none transition-colors hover:bg-primary-hover focus-visible:ring-3 focus-visible:ring-ring/60"
+            className={cn(
+              FOCUS,
+              "inline-flex h-9 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover max-[25rem]:px-3",
+            )}
           >
             Open Lepaq
-            <ArrowRight className="size-3.5" aria-hidden />
+            <ArrowRight className="size-3.5 max-[25rem]:hidden" aria-hidden />
           </Link>
         </div>
       </div>
@@ -131,15 +153,17 @@ const AXIS_MAX = 30;
 
 export function SinglishSection() {
   return (
-    <section aria-labelledby="singlish-title" id="singlish" className={cn(styles.inkBand, "scroll-mt-16")}>
+    <section aria-labelledby="singlish-title" id="singlish" className={cn(styles.inkBand, styles.anchor)}>
       <div className={cn(WRAP, "py-20 lg:py-28")}>
-        <SectionHead label="Why the line came out right · WhisperLah" title="Trained for the way Singapore talks." id="singlish-title" invert>
+        <SectionHead label="How Lepaq hears Singlish · WhisperLah" title="Trained for the way Singapore talks." id="singlish-title" invert>
           <p>
-            Most speech models were built for American English on video
-            calls. Lepaq transcribes with WhisperLah, our own model: we taught
-            OpenAI&apos;s open Whisper model Singlish and code-switching. On
-            two-person Singlish conversation it now makes fewer errors than
-            every other model we tested, OpenAI&apos;s paid API included.
+            Off-the-shelf speech models drop Singlish: OpenAI&apos;s Whisper,
+            our starting point, writes down only 10% of the lah, leh and lor
+            in two-person conversation. Lepaq transcribes with WhisperLah, our
+            own model: we taught OpenAI&apos;s open Whisper model Singlish and
+            code-switching. On two-person Singlish conversation it now makes
+            fewer errors than every other model we tested, OpenAI&apos;s paid
+            API included.
           </p>
         </SectionHead>
 
@@ -147,7 +171,11 @@ export function SinglishSection() {
           <Reveal as="figure" className={cn(styles.reveal, "lg:col-span-7")}>
             <figcaption>
               <p className="font-medium text-white">Word error rate on two-person Singlish conversation</p>
-              <p className="mt-1 text-sm text-white/60">NSC Part 3, 997 clips, same clips and text normaliser for every model. Lower is better.</p>
+              <p className="mt-1 text-sm text-white/60">
+                NSC (IMDA&apos;s National Speech Corpus) Part 3, 997 clips, same
+                clips and text normaliser for every model. Lower is better.
+                Selected models; all 18 are in the full table on GitHub.
+              </p>
             </figcaption>
             <div className="relative mt-7">
               {/* hairline grid at 0, 10, 20, 30 */}
@@ -201,25 +229,28 @@ export function SinglishSection() {
               </div>
             </div>
             <p className="mt-6 text-xs leading-relaxed text-white/60">
-              A*STAR&apos;s larger MERaLiON-2-10B-ASR was run on a 299-clip
-              sample of this set: 22.4%, against 18.8% for WhisperLah on the
-              same clips.
+              A*STAR&apos;s larger MERaLiON-2-10B-ASR, run in 4-bit on a
+              299-clip sample of this set, scored 22.4%, against 18.8% for
+              WhisperLah on the same clips.
             </p>
           </Reveal>
 
           <Reveal className={cn(styles.reveal, "grid content-start gap-0 lg:col-span-5")}>
+            {/* Lepaq sends every meeting in room mode (lib/asr/jobs.ts), so the
+                first two are room mode, and the near-mic score says what room
+                mode scores on the same test */}
             {[
               {
-                figure: "14.8%",
-                body: "word error rate on SASRBench-v1, the public Singlish benchmark. Next best: 15.8%, OpenAI's GPT Transcribe.",
+                figure: "4 of 4",
+                body: "NSC conversation test sets (Parts 3 to 6) where WhisperLah has the lowest error of every model we ran on them, in room mode, the one Lepaq records meetings with.",
               },
               {
                 figure: "76%",
-                body: "of discourse particles (lah, leh, lor …) written down in conversation. Next best: 50%.",
+                body: "of discourse particles (lah, leh, lor …) written down in two-person conversation, in room mode. Next best: 50%, OpenAI's GPT Transcribe.",
               },
               {
-                figure: "5 of 7",
-                body: "Singlish test sets where WhisperLah has the lowest error, against 17 other models and API settings.",
+                figure: "14.8%",
+                body: "word error rate on SASRBench-v1, a public close-talk benchmark that scores only the person wearing the mic, in near-mic mode. Next best: 15.8%, OpenAI's GPT Transcribe. Room mode, which writes down everyone, scores 17.1% there.",
               },
             ].map((s, i) => (
               <div
@@ -232,19 +263,24 @@ export function SinglishSection() {
               </div>
             ))}
             <p className="border-t border-white/15 pt-5 text-xs leading-relaxed text-white/60">
-              Behind A*STAR&apos;s MERaLiON-2-3B on two read-speech sets (NSC
-              Parts 1 and 2). Not every vendor has been tested yet. The
-              evaluation harness and per-clip results are public; the model
-              weights are not.
+              Behind on read speech (NSC Parts 1 and 2): A*STAR&apos;s
+              MERaLiON-2-3B leads both, four other models, OpenAI&apos;s GPT
+              Transcribe among them, also beat it on Part 1, and Alibaba&apos;s
+              SenseVoice Small on Part 2. All seven test sets are quiet,
+              close-mic recordings: café noise is not benchmarked yet, and
+              neither is how well the voices are told apart. Not every vendor
+              has been tested yet. The evaluation harness and per-clip results
+              are public; the model weights are not.
             </p>
             <a
               href={BENCHMARK_HREF}
               target="_blank"
               rel="noreferrer"
-              className="mt-4 inline-flex items-center gap-1.5 self-start rounded text-sm font-medium text-white underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-brand/70"
+              className={cn(FOCUS, "mt-4 inline-flex items-center gap-1.5 self-start text-sm font-medium text-white underline-offset-4 hover:underline")}
             >
               See the benchmark on GitHub
               <ArrowUpRight className="size-4" aria-hidden />
+              <NewTab />
             </a>
           </Reveal>
         </div>
@@ -255,22 +291,43 @@ export function SinglishSection() {
 
 /* ─────────────────────────────── The promises ─────────────────────────────── */
 
+/**
+ * Each line is checked against the app: the approve route, the new-meeting
+ * wizard, the fact-category guard (lib/constants.ts) and the share page.
+ * Where the audio goes is from the owner's 28 Oct claim review; confirm the
+ * region before changing it.
+ */
 const PRIVACY = [
-  ["Drafts until you approve", "Everything the AI writes stays a private draft until you approve it."],
+  [
+    "Drafts until you approve",
+    "Follow-ups and facts the AI drafts wait for your approval before they reach your list or a person’s page.",
+  ],
   ["No manager view", "Lepaq is built for the person in the meeting, not for oversight of them."],
-  ["Consent first", "Starting a meeting means confirming the other side is happy for you to take notes."],
-  ["Audio deleted", "Recordings are deleted after transcription, by default."],
-  ["Sensitive topics stay out", "Health, religion, politics, ethnicity, sexuality and money are blocked in the prompt, the code and the database."],
-  ["Yours alone", "Row-level security on every table. A share link shows only the summary you approved."],
+  [
+    "Consent, every time",
+    "Lepaq won’t upload or transcribe a recording until you confirm everyone in it knew they were being recorded. The recorder reminds you to ask first.",
+  ],
+  [
+    "Where the audio goes",
+    "Recordings are transcribed on our own GPU service, run on Modal in US East, and deleted after transcription by default. Anthropic’s Claude writes the report from the transcript.",
+  ],
+  [
+    "Sensitive facts stay off profiles",
+    "Lepaq’s AI is told never to file health, religion, politics, ethnicity, sexuality, finances or family problems as a fact about someone, and the code and the database refuse those categories. No fact reaches a profile until you tick it, and a line you strike from the transcript is left out when the report is regenerated.",
+  ],
+  [
+    "Yours alone",
+    "Row-level security on every table. A share link shows only what you approved: the summary, key takeaways, decisions and ticked follow-ups with names and dates. Never the transcript, the recording, emotion reads, personal facts or coaching.",
+  ],
 ];
 
 export function PrivacySection() {
   return (
-    <section aria-labelledby="privacy-title" id="privacy" className={cn(WRAP, "scroll-mt-20 py-20 lg:py-28")}>
+    <section aria-labelledby="privacy-title" id="privacy" className={cn(WRAP, styles.anchor, "py-20 lg:py-28")}>
       <SectionHead label="Why you can bring it to coffee · Private by default" title="Your notes. Not your manager's." id="privacy-title">
         <p>
-          Where business runs on trust, nobody records a client unless the
-          notes clearly belong to them. So in Lepaq they do.
+          Where business runs on trust, you only record a client if the notes
+          are clearly yours. In Lepaq, they are.
         </p>
       </SectionHead>
       <Reveal as="dl" className={cn(styles.reveal, "mt-12 grid border-t sm:grid-cols-2 lg:mt-16 lg:grid-cols-3")}>
@@ -314,12 +371,15 @@ const APP_NAV = [
 /** The story ends where the product starts: the follow-up, on the app's own list. */
 export function Finale() {
   return (
-    <section aria-labelledby="close-title" id="start" className="scroll-mt-16 border-t bg-card">
+    <section aria-labelledby="close-title" id="start" className={cn(styles.anchor, "border-t bg-card")}>
       <div className={cn(WRAP, "grid grid-cols-1 gap-x-12 gap-y-12 py-20 lg:grid-cols-12 lg:items-center lg:py-28")}>
         <div className="lg:col-span-5">
           <p className={cn(styles.mono, "text-muted-foreground")}>Your turn</p>
           <h2 id="close-title" className={cn(styles.display, "mt-4 text-[2.75rem] leading-[1] sm:text-[4rem] lg:text-[4.5rem]")}>
-            Bring Lepaq. Leave with the follow&#8209;up.
+            {/* "follow-up." moves to the next line whole, and breaks at its
+                hyphen only where it cannot fit on a line of its own (200% text
+                on a small phone). Not U+2011: the display face has no glyph for it */}
+            Bring Lepaq. Leave with the <span className="inline-block">follow-up.</span>
           </h2>
           <p className="mt-5 max-w-[30rem] text-[1.02rem] leading-relaxed text-muted-foreground">
             Start a meeting and the next line worth keeping lands where
@@ -330,21 +390,25 @@ export function Finale() {
             <Link
               href={APP_HREF}
               prefetch={false}
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-base font-semibold text-on-brand outline-none transition-colors hover:bg-brand-hover focus-visible:ring-3 focus-visible:ring-ring/60"
+              className={cn(
+                FOCUS,
+                "inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 text-base font-semibold text-on-brand transition-colors hover:bg-brand-hover",
+              )}
             >
               Open Lepaq
               <ArrowRight className="size-4" aria-hidden />
             </Link>
             <Link
               href={WALKTHROUGH_HREF}
-              className="inline-flex items-center gap-1.5 rounded text-[0.95rem] font-medium underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/60"
+              prefetch={false}
+              className={cn(FOCUS, "inline-flex items-center gap-1.5 text-[0.95rem] font-medium underline-offset-4 hover:underline")}
             >
               Watch the 71-second walkthrough
               <ArrowRight className="size-4" aria-hidden />
             </Link>
             <a
               href="#top"
-              className="inline-flex items-center gap-1.5 rounded text-sm text-muted-foreground underline-offset-4 outline-none hover:text-foreground hover:underline focus-visible:ring-3 focus-visible:ring-ring/60"
+              className={cn(FOCUS, "inline-flex items-center gap-1.5 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline")}
             >
               Read the story again
             </a>
@@ -390,11 +454,12 @@ export function Finale() {
                   <span className={styles.openBox} />
                   <div className="min-w-0 flex-1">
                     <p className="text-[0.85rem] font-medium">{SAMPLE.followUp}</p>
+                    {/* the real list: owner · company · meeting */}
                     <p className="mt-1 text-[0.75rem] text-muted-foreground">
-                      {SAMPLE.company} · {SAMPLE.meeting}
+                      You · {SAMPLE.company} · {SAMPLE.meeting}
                     </p>
                   </div>
-                  <span className="shrink-0 text-[0.75rem] text-on-butter">Due in 2 days</span>
+                  <span className={cn(styles.appDue, "shrink-0 text-[0.75rem] text-on-butter")}>Due in 2 days</span>
                 </div>
               </div>
             </div>
@@ -421,10 +486,15 @@ export function LandingFooter() {
           this page runs in your browser and saves nothing.
         </p>
         <nav aria-label="Footer" className="flex flex-wrap gap-x-5 gap-y-2">
-          <Link href={WALKTHROUGH_HREF} className="hover:text-foreground">Walkthrough</Link>
-          <Link href="/login" className="hover:text-foreground">Sign in</Link>
-          <a href={BENCHMARK_HREF} target="_blank" rel="noreferrer" className="hover:text-foreground">
+          <Link href={WALKTHROUGH_HREF} prefetch={false} className={cn(FOCUS, "hover:text-foreground")}>
+            Walkthrough
+          </Link>
+          <Link href="/login" className={cn(FOCUS, "hover:text-foreground")}>
+            Sign in
+          </Link>
+          <a href={BENCHMARK_HREF} target="_blank" rel="noreferrer" className={cn(FOCUS, "hover:text-foreground")}>
             WhisperLah benchmark
+            <NewTab />
           </a>
         </nav>
       </div>

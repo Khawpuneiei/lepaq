@@ -233,7 +233,10 @@ export function DemoFrame({ capture }: { capture: boolean }) {
         : "";
     // A real hash change, so the transcript's own :target highlight fires.
     // The jump it causes is overwritten by the director's next setScroll.
-    if (window.location.hash !== hash) window.location.hash = hash;
+    // replace(), not an assignment: this page runs in /demo's iframe, and each
+    // assignment would add an entry to the tab's history, so Back stayed on
+    // the walkthrough twice for every pass through the evidence scene.
+    if (window.location.hash !== hash) window.location.replace(hash || "#");
 
     // Resolve apply() only after the new state has been committed and
     // painted, so a screenshot taken straight after never catches the

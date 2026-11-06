@@ -16,6 +16,7 @@
     "e2e": "tsx --conditions=react-server scripts/e2e.ts",
     "check:pages": "tsx --conditions=react-server scripts/check-pages.ts",
     "check:footprint": "tsx --conditions=react-server scripts/check-footprint.ts",
+    "check:landing": "tsx --conditions=react-server scripts/check-landing.ts",
     "demo:record": "tsx scripts/record-demo.ts",
     "postinstall": "node scripts/copy-ffmpeg-core.mjs"
   },

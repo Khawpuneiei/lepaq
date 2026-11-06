@@ -10,12 +10,13 @@
  */
 
 import "./load-env";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
 let failures = 0;
-const ok = (s: string, d = "") => console.log(`  ok    ${s}${d ? "  — " + d : ""}`);
+let skipped = 0;
+const ok =(s: string, d = "") => console.log(`  ok    ${s}${d ? "  — " + d : ""}`);
 const bad = (s: string, d = "") => {
   console.log(`  FAIL  ${s}${d ? "  — " + d : ""}`);
   failures++;
@@ -101,10 +102,74 @@ async function main() {
     }
   }
 
+  await checkFollowUpOnPersonPage(db, v.session?.user.id, cookie);
+
+  // a skip passes, but the last line says so: the data had nothing to check it with
+  const unchecked = skipped ? ` ${skipped} check skipped for want of data (see "skip" above).` : "";
   console.log(
-    failures === 0 ? "\nEvery screen rendered.\n" : `\n${failures} screen(s) failed.\n`,
+    failures === 0 ? `\nEvery screen rendered.${unchecked}\n` : `\n${failures} screen(s) failed.${unchecked}\n`,
   );
   process.exit(failures === 0 ? 0 : 1);
+}
+
+/** React's escaping for text, so a title with "&" or "'" still matches the HTML. */
+const asHtml = (text: string) =>
+  text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+
+/**
+ * The landing page's last chapter: "Send Jamie the proposal" is yours, and it
+ * still shows on Jamie's page, because she was in the meeting it came from.
+ * Takes an approved, open follow-up of the signed-in user's and someone from
+ * its meeting who does not own it, and looks for its title on their page.
+ * The person page reads its query's error into a log and an empty list, so
+ * rendering alone would not catch this breaking.
+ */
+async function checkFollowUpOnPersonPage(
+  db: SupabaseClient,
+  userId: string | undefined,
+  cookie: string,
+) {
+  const label = "a meeting's follow-up shows on the page of someone who was in it";
+  if (!userId) return bad(label, "no session");
+
+  const { data: items, error } = await db
+    .from("action_items")
+    .select("title, meeting_id, person_id")
+    .eq("owner_id", userId)
+    .eq("approved", true)
+    .eq("done", false)
+    .limit(50);
+  if (error) return bad(label, error.message);
+
+  for (const item of (items ?? []) as { title: string; meeting_id: string; person_id: string | null }[]) {
+    // a failed lookup is a failure, not "no one else was there" [REV-19]
+    const { data: others, error: lookup } = await db
+      .from("meeting_participants")
+      .select("person_id")
+      .eq("meeting_id", item.meeting_id)
+      .not("person_id", "is", null)
+      .not("is_me", "is", true);
+    if (lookup) return bad(label, lookup.message);
+    const other = ((others ?? []) as { person_id: string }[]).find((p) => p.person_id !== item.person_id);
+    if (!other) continue;
+
+    const route = `/people/${other.person_id}`;
+    try {
+      const html = await (await fetch(`${BASE}${route}`, { headers: { cookie } })).text();
+      if (html.includes(asHtml(item.title))) ok(label, `"${item.title}" on ${route}`);
+      else bad(label, `"${item.title}" is missing from ${route}`);
+    } catch (err) {
+      bad(label, err instanceof Error ? err.message : String(err));
+    }
+    return;
+  }
+  skipped++;
+  console.log(`  skip  ${label}  — no approved, open follow-up with another person in its meeting`);
 }
 
 main().catch((err) => {

@@ -3,12 +3,21 @@
   story's sticky stage and the scenes on it, the spoken line, the ruled chit
   it is written into, the stamp, and the entrances further down. Colours come
   from the app's tokens in app/globals.css; nothing here adds a new one.
+
+  Breakpoints are in rem, as Tailwind's are (64rem is 1024px at the usual
+  16px text). A larger default text size then gets the layout that size of
+  text needs: a 1440px window at 200% text is laid out like a 720px one, not
+  as a desktop whose two columns and stage no longer fit. The story's script
+  asks the same question (story.tsx, "(min-width: 64rem)").
 */
 
 .display {
   font-family: var(--font-landing-serif), var(--font-display), Georgia, serif;
   font-weight: 400;
   letter-spacing: -0.015em;
+  /* a word too long for any line (a 320px phone at 200% text) breaks rather
+     than push the page sideways; at every other size this does nothing */
+  overflow-wrap: break-word;
 }
 
 .mono {
@@ -16,6 +25,17 @@
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* The header keeps one row. Below 15.5rem the wordmark goes (sections.tsx),
+   and below 11.5rem (a 320px phone at 200% text) the row's margins narrow
+   too, so the cup and Open Lepaq still sit side by side. Unlayered, so it
+   beats Tailwind's padding utilities. */
+@media (width < 11.5rem) {
+  .navRow {
+    padding-inline: 0.625rem;
+    column-gap: 0.5rem;
+  }
 }
 
 /* how far down the page you are, drawn by the scroll itself where the browser can */
@@ -74,6 +94,22 @@
   background: var(--background);
 }
 
+/* the stage only pins once the story's script runs (data-live). Without it
+   (JavaScript off, a failed chunk, before hydration) the picture never
+   changes: pinned, it would sit over half a phone's screen, and on desktop the
+   chapters would print over it. So it scrolls away with the page. The
+   chapters keep their scroll margins: a page opened on #chapter-approved
+   scrolls there before the script runs, and must land where the pinned stage
+   leaves room */
+.stageWrap:not([data-live]) {
+  position: relative;
+  top: auto;
+}
+
+.stageWrap:not([data-live])::before {
+  content: none;
+}
+
 .stage {
   position: relative;
   height: 100%;
@@ -87,12 +123,12 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
-  max-width: 1320px;
+  max-width: 82.5rem;
   margin: 0 auto;
   padding: 2.75rem 1.25rem 0.75rem;
 }
 
-@media (min-width: 640px) {
+@media (width >= 40rem) {
   .stageInner {
     padding-inline: 2rem;
   }
@@ -118,6 +154,15 @@
     visibility 0s;
 }
 
+/* the global reduced-motion rule shortens durations but not delays: without
+   this the stage shows no scene at all for a moment between two */
+@media (prefers-reduced-motion: reduce) {
+  .scene,
+  .scene[data-on] {
+    transition-delay: 0s;
+  }
+}
+
 .sceneLine {
   align-self: safe center;
 }
@@ -140,15 +185,25 @@
 }
 
 .step {
-  max-width: 1320px;
+  max-width: 82.5rem;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 0;
   /* a chapter, then room to watch the stage before the next one arrives */
   min-height: calc(100svh - var(--nav-h) - var(--stage-h) + 14svh);
-  scroll-margin-top: calc(var(--nav-h) + var(--stage-h));
+  /* a jump lands the chapter just under the stage; the header's share is the
+     page's scroll-padding (globals.css, html:has(#story)) */
+  scroll-margin-top: var(--stage-h);
 }
 
-@media (min-width: 640px) {
+@media (width < 64rem) {
+  /* a focused link in a chapter scrolls clear of the pinned stage, not under it */
+  .step a {
+    scroll-margin-top: calc(var(--stage-h) + 1rem);
+    scroll-margin-bottom: 1rem;
+  }
+}
+
+@media (width >= 40rem) {
   .step {
     padding-inline: 2rem;
   }
@@ -163,8 +218,67 @@
   min-height: calc(100svh - var(--nav-h) - var(--stage-h) + 30svh);
 }
 
+/*
+  Short screens below desktop width: a phone held sideways, or a laptop at
+  150-200% zoom (zoom narrows the page into this layout and shortens it). A
+  pinned header and stage would cover the whole screen and no chapter could
+  ever be read, so the stage scrolls away with the page and the chapters read
+  as an ordinary page. Keyed on height in CSS pixels, so zoom gets it too.
+*/
+@media (width < 64rem) and (height <= 30rem) {
+  .stageWrap {
+    position: relative;
+    top: auto;
+  }
+
+  .stageWrap::before {
+    content: none;
+  }
+
+  .step {
+    min-height: 0;
+    padding-bottom: 2.5rem;
+    scroll-margin-top: 0;
+  }
+
+  .step a {
+    scroll-margin-top: 1rem;
+  }
+}
+
+/* the sections after the story: their headings land under the sticky header,
+   not behind it (the page's scroll-padding; see the fallback below) */
+.anchor {
+  scroll-margin-top: 0;
+}
+
+/* browsers without :has() (Firefox before 121) get no page scroll-padding,
+   so the header's height goes on each target instead */
+@supports not selector(:has(a)) {
+  .anchor {
+    scroll-margin-top: var(--nav-h, 4rem);
+  }
+
+  .step {
+    scroll-margin-top: calc(var(--nav-h) + var(--stage-h));
+  }
+
+  @media (width < 64rem) and (height <= 30rem) {
+    .step {
+      scroll-margin-top: var(--nav-h);
+    }
+  }
+}
+
+/* the plain version, shown if the live story fails: the chapters as a page */
+.storyStatic .step {
+  min-height: 0;
+  padding-bottom: 2.5rem;
+  scroll-margin-top: 0;
+}
+
 /* desktop: the stage fills the screen and the words sit in its left column */
-@media (min-width: 1024px) {
+@media (width >= 64rem) {
   .story {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -179,6 +293,7 @@
     border-bottom: 0;
   }
 
+  /* (until the story's script runs, the stage scrolls away: .stageWrap:not([data-live]) above) */
   .stageWrap::before {
     content: none;
   }
@@ -244,9 +359,16 @@
     padding-bottom: clamp(1.75rem, 6svh, 4rem);
   }
 
+  /* the opening's words sit under the spoken line and rise with the page while
+     the line stays pinned. Chapter one takes over only 0.15 of the window's
+     height later (story.tsx), and a short desktop has less room than that, so
+     a key press or a slow scroll stopped in between and printed the rule and
+     the headline across the line's foot. In the page's own colour the card is
+     a sheet that slides over it instead, and at rest it covers nothing [REV-23] */
   .stepOpen .stepCard {
     grid-column: 1 / -1;
     max-width: none;
+    background: var(--background);
     transition: opacity 260ms ease;
   }
 
@@ -254,6 +376,13 @@
   .stepOpen .stepCard:not([data-active]) {
     opacity: 0;
     pointer-events: none;
+  }
+
+  /* and its scroll cue leaves the tab order, so focus never lands on a link
+     nobody can see */
+  .stepOpen .stepCard:not([data-active]) .cue {
+    visibility: hidden;
+    transition: visibility 0s linear 260ms;
   }
 
   /* chapter one follows straight on from the opening, so its first words are
@@ -266,12 +395,37 @@
   .stepLast {
     min-height: 125svh;
   }
+
+  /* the plain version has no stage to share a row with */
+  .storyStatic .step {
+    min-height: 0;
+    padding-block: 3rem;
+  }
+
+  .storyStatic .stepOpen {
+    padding-top: 4rem;
+  }
+}
+
+@supports not selector(:has(a)) {
+  @media (width >= 64rem) {
+    .step {
+      scroll-margin-top: 0;
+    }
+
+    .stepFirst {
+      scroll-margin-top: var(--nav-h);
+    }
+  }
 }
 
 /* --- the words ----------------------------------------------------------- */
 
 .h1 {
-  font-size: 2.3rem;
+  /* "remembered." is 4.4em wide: on a phone with very large text the line
+     shrinks until it fits beside the page's 1.25rem margins, instead of
+     breaking the word */
+  font-size: min(2.3rem, (100vw - 2.5rem) / 4.75);
   line-height: 1.02;
 }
 
@@ -290,17 +444,25 @@
   margin-top: 1.25rem;
   border-radius: 4px;
   color: var(--foreground);
-  outline: none;
 }
 
-.cue:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 60%, transparent);
+/* real outlines: --ring clears 3:1, and outlines survive forced colours */
+.cue:focus-visible,
+.note a:focus-visible,
+.railLink:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .cueArrow {
   width: 0.9rem;
   height: 0.9rem;
-  animation: nudge 1.8s ease-in-out infinite;
+}
+
+/* a nudge or two while the opening is on screen, then still (nothing moves
+   for more than 5s on its own) */
+.stepCard[data-active] .cueArrow {
+  animation: nudge 1.8s ease-in-out 2;
 }
 
 @keyframes nudge {
@@ -315,8 +477,12 @@
 
 .chapterKicker {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  /* at 200% text on a small phone the row wraps between its parts ("04 / 04",
+     "· Remembered"), not inside each of them */
+  white-space: nowrap;
   color: var(--muted-foreground);
 }
 
@@ -358,11 +524,6 @@
   color: var(--foreground);
   text-decoration: underline;
   text-underline-offset: 3px;
-  outline: none;
-}
-
-.note a:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 60%, transparent);
 }
 
 .stateLine {
@@ -372,7 +533,21 @@
   color: var(--muted-foreground);
 }
 
-@media (min-width: 640px) {
+/* the app's own status labels, joined by a drawn arrow (Geist Mono has no →) */
+.stateSteps,
+.stateStep {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.stateArrow {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+@media (width >= 40rem) {
   .h1 {
     font-size: 3rem;
   }
@@ -382,7 +557,7 @@
   }
 }
 
-@media (min-width: 1024px) {
+@media (width >= 64rem) {
   .opening {
     display: grid;
     grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
@@ -409,6 +584,34 @@
   }
 }
 
+/* A short desktop screen (a laptop at 125-150% zoom, or with large text): the
+   opening's words take one row under the spoken line. The headline keeps to
+   one line and the cue moves under it, beside the lede, so the line above
+   has room (.quote below) */
+@media (width >= 64rem) and (height <= 36rem) {
+  .h1 {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: clamp(3rem, 4.4vw, 4rem);
+  }
+
+  .openingSide {
+    display: contents;
+  }
+
+  .lede {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .cue {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+    margin-top: 0.75rem;
+  }
+}
+
 /* --- the rail: where you are in the story ---------------------------------- */
 
 .rail {
@@ -419,12 +622,12 @@
 }
 
 .railGrid {
-  max-width: 1320px;
+  max-width: 82.5rem;
   margin: 0 auto;
   padding: 0.25rem 1.25rem 0;
 }
 
-@media (min-width: 640px) {
+@media (width >= 40rem) {
   .railGrid {
     padding-inline: 2rem;
   }
@@ -440,12 +643,7 @@
   display: block;
   padding: 0.5rem 0 0.3125rem;
   border-radius: 3px;
-  outline: none;
   pointer-events: auto;
-}
-
-.railLink:focus-visible {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 60%, transparent);
 }
 
 .railBar {
@@ -478,7 +676,25 @@
   color: var(--muted-foreground);
 }
 
-@media (min-width: 1024px) {
+/* phones: the bars are all you see of the links, so they need contrast (3:1
+   and up) and a current chapter told apart by more than its hue */
+@media (width < 64rem) {
+  .railBar {
+    background: color-mix(in srgb, var(--foreground) 50%, transparent);
+  }
+
+  .railLink[data-done] .railBar {
+    background: var(--foreground);
+  }
+
+  .railLink[aria-current] .railBar {
+    height: 5px;
+    margin-block: -1px;
+    background: var(--ring);
+  }
+}
+
+@media (width >= 64rem) {
   .railGrid {
     display: grid;
     grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
@@ -499,6 +715,9 @@
     margin-top: 0.5rem;
     overflow: visible;
     clip-path: none;
+    /* large default text would run one label into the next */
+    white-space: normal;
+    text-wrap: balance;
     color: var(--muted-foreground);
     transition: color 300ms ease;
   }
@@ -538,7 +757,12 @@
   height: 7px;
   border-radius: 999px;
   background: var(--brand);
-  animation: live 1.8s ease-out infinite;
+}
+
+/* only while the line is on the stage, and only twice: a hidden pulse still
+   costs the main thread, and nothing loops for more than 5s on its own */
+.stage[data-step="0"] .liveDot {
+  animation: live 1.8s ease-out 2;
 }
 
 @keyframes live {
@@ -553,8 +777,10 @@
 .quote {
   font-family: var(--font-landing-serif), var(--font-display), Georgia, serif;
   font-weight: 400;
-  /* as wide as its column allows ("Send the proposal" stays one line), as tall as the stage allows */
-  font-size: clamp(2.2rem, min(15.6cqi, 20cqh), 11rem);
+  /* as wide as its column allows ("Send the proposal" stays one line), as tall
+     as the stage allows. The floor never outgrows the column: with large text
+     a 2.2rem floor ran the line off the screen */
+  font-size: clamp(min(2.2rem, 15.6cqi), min(15.6cqi, 20cqh), 11rem);
   line-height: 0.94;
   letter-spacing: -0.025em;
 }
@@ -569,7 +795,7 @@
   margin-left: max(-0.2em, 0.5rem - var(--hang-room));
 }
 
-@media (min-width: 640px) {
+@media (width >= 40rem) {
   .quoteBox {
     --hang-room: 2rem;
   }
@@ -579,15 +805,24 @@
   }
 
   .quote {
-    font-size: clamp(2.2rem, min(16.4cqi, 20cqh), 11rem);
+    font-size: clamp(min(2.2rem, 16.4cqi), min(16.4cqi, 20cqh), 11rem);
   }
 }
 
-@media (min-width: 1024px) {
+@media (width >= 64rem) {
   /* the stage's padding plus whatever centres it on a wide screen (less a
      classic scrollbar, which 100vw counts) */
   .quoteBox {
-    --hang-room: calc(3rem + max(0px, (100vw - 1320px - 1rem) / 2));
+    --hang-room: calc(3rem + max(0px, (100vw - 82.5rem - 1rem) / 2));
+  }
+
+  /* on a short stage the line also leaves room for the opening's words at
+     the stage's foot: 17.2rem is the kicker, the attribution and the space
+     above them (6.6rem), the opening at its tallest (7.8rem, a four-line lede
+     beside a classic scrollbar), its foot padding and a 1rem gap; the line's
+     two rows take 1.9 of its size. Below about 27.7rem this is the smaller */
+  .quote {
+    font-size: clamp(min(2.2rem, 16.4cqi), min(16.4cqi, 20cqh, (100cqh - 17.2rem) / 1.9), 11rem);
   }
 }
 
@@ -665,7 +900,7 @@
 }
 
 .stage[data-step="0"] .wave span[data-on] {
-  animation: level 900ms ease-in-out infinite alternate;
+  animation: level 900ms ease-in-out 5 alternate;
   animation-delay: calc(var(--i) * -130ms);
 }
 
@@ -678,7 +913,7 @@
   }
 }
 
-@media (max-width: 639px) {
+@media (width < 40rem) {
   .wave span:nth-child(n + 31) {
     display: none;
   }
@@ -697,7 +932,7 @@
   margin: 0 auto;
 }
 
-@media (min-width: 1024px) {
+@media (width >= 64rem) {
   .workCol {
     gap: 1.25rem;
   }
@@ -828,6 +1063,23 @@
     grid-template-columns: 9.5rem minmax(0, 1fr);
     column-gap: 1rem;
     align-items: baseline;
+  }
+}
+
+/* each phrase the quote's words fly into stays whole: on a narrow stage the
+   line wraps between them, never inside one */
+.keyText [data-k] {
+  white-space: nowrap;
+}
+
+/* The quote's words land in this line, so it stays one line (11.07em). On a
+   desktop its column is the work column (7/12 of the stage less its padding
+   and gap, at most 38rem) less the speaker column and the box's padding; at
+   1024px a classic scrollbar took enough of that to push "can?" onto a
+   second line */
+@media (width >= 64rem) {
+  .keyText {
+    font-size: clamp(1.3rem, min(1.05rem + 1.1cqi, (min((100cqi - 9rem) * 7 / 12, 38rem) - 12rem - 4px) / 11.5), 2.1rem);
   }
 }
 
@@ -977,7 +1229,10 @@
 }
 
 .itemTitle {
-  font-size: 1.02rem;
+  /* one line, as the flights need: on a narrow stage with large text it
+     shrinks to the card. 8rem is the stage's width that is not the title's
+     (the slip, the item card and its tick box); "Send the proposal" is 8.7em */
+  font-size: min(1.02rem, (100cqi - 8rem) / 9.1);
   font-weight: 600;
 }
 
@@ -1240,10 +1495,13 @@
   font-weight: 600;
 }
 
+/* the approved follow-up's owner flies onto this name, so it keeps one line:
+   on a narrow card it gets smaller rather than breaking (below) */
 .personName {
   margin-top: 0.125rem;
   font-size: clamp(1.75rem, 1.1rem + 2cqh, 2.4rem);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .personMeta {
@@ -1277,6 +1535,9 @@
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
+  /* the open follow-up's row measures itself against this box, which is
+     narrow on a 1024px laptop's two-column card as well as on a phone */
+  container: prep / inline-size;
 }
 
 .openItem {
@@ -1300,6 +1561,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* one line, which the flight into it needs, and whole: where its row is
+     too narrow it shrinks to fit ("Send the proposal" is 8.7em, the tick box
+     and its gap 1.625rem) */
+  font-size: min(1rem, (100cqi - 1.625rem) / 9.1);
   font-weight: 600;
 }
 
@@ -1377,12 +1642,18 @@
     right: 0.875rem;
   }
 
+  /* "Jamie Tan" (3.21em) fits beside the avatar: 7.875rem is the stage's
+     padding and the card's, the avatar and the gap */
+  .personName {
+    font-size: min(clamp(1.75rem, 1.1rem + 2cqh, 2.4rem), (100cqi - 7.875rem) / 3.4);
+  }
+
   .openItem {
     gap: 0.5rem;
   }
 
   .openTitle {
-    font-size: 0.9375rem;
+    font-size: min(0.9375rem, (100cqi - 1.625rem) / 9.1);
   }
 
   .openItem .chip {
@@ -1391,11 +1662,101 @@
   }
 }
 
+/* a stage under 13rem wide (a phone with very large text): the avatar gives
+   its room to the name, which beside it would shrink below 1.5rem. 4.25rem is
+   the stage's padding and the card's */
+@container stage (width < 13rem) {
+  .avatar {
+    display: none;
+  }
+
+  .personName {
+    font-size: min(1.75rem, (100cqi - 4.25rem) / 3.4);
+  }
+}
+
+/* a prep box too narrow for the title and the date side by side (a 1024px
+   laptop, or a phone with large text): the date moves under the title, so
+   the title keeps the row. The basis leaves the tick box, its 0.5rem gap and
+   a little slack */
+@container prep (width < 15.5rem) {
+  .openItem {
+    flex-wrap: wrap;
+    column-gap: 0.5rem;
+    row-gap: 0.25rem;
+  }
+
+  .openTitle {
+    flex: 1 1 calc(100% - 1.75rem);
+  }
+
+  .openItem .chip {
+    margin-left: 1.625rem;
+  }
+}
+
 /* --- shorter stages drop the least important lines first ------------------- */
 
 @container stage (max-height: 46rem) {
   .turnFar {
     display: none;
+  }
+}
+
+/* Each layout runs out of room at its own height: a laptop at 1280x593 (FHD
+   at 150%) or a large default font would otherwise cut off the Approve
+   button. The desktop's tall top padding is mostly room for the rail, which
+   needs about 3.5rem of it. */
+@media (width >= 64rem) {
+  @container stage (max-height: 37rem) {
+    .turnNear,
+    .cite,
+    .meetings {
+      display: none;
+    }
+  }
+
+  @container stage (max-height: 31rem) {
+    .stageInner {
+      padding-top: 3.75rem;
+      padding-bottom: 1rem;
+    }
+
+    /* the opening line clears a one-line rail, as it does at full height */
+    .sceneLine {
+      margin-top: -1.5rem;
+    }
+  }
+
+  /* 1280x593 with Large text, or 1024x474 (125% zoom): the key line shrinks
+     too, as it does below 25rem, so the Approve bar stays on the stage.
+     Without it the bar ran out of room on stages up to about 28.2rem (28.3rem
+     with small text); from 29rem it keeps a few pixels more above that */
+  @container stage (max-height: 29rem) {
+    .turnKey {
+      margin: 0.25rem 0;
+      padding: 0.4rem 0.625rem 0.45rem;
+    }
+
+    .keyText {
+      font-size: 1.2rem;
+    }
+  }
+}
+
+@media (width < 64rem) {
+  @container stage (max-height: 33rem) {
+    .turnNear,
+    .cite,
+    .meetings {
+      display: none;
+    }
+  }
+
+  @container stage (width < 36rem) and (max-height: 34.5rem) {
+    .meetings {
+      display: none;
+    }
   }
 }
 
@@ -1414,14 +1775,38 @@
   }
 }
 
-@container stage (max-height: 25rem) {
+/* both layouts: the panels lose their headings before anything that moves */
+@container stage (max-height: 27rem) {
   .panelHead,
   .reportTitle,
   .personKicker,
   .subLabel {
     display: none;
   }
+}
 
+/* a stage 30-36rem wide (a narrow window, or a tablet with large text) shows
+   the report's three ruled rows while its line still sits above the
+   speakers, so the slip is taller than on either side of that band. There
+   the report's title goes from 28.25rem rather than 27rem, and in the phone
+   and tablet layout the report's evidence line from just under the stage's
+   34rem cap rather than 33rem; without them Approve was cut off [REV-24].
+   Jamie's page has room for its own evidence line, and keeps it [REV-30] */
+@container stage (30rem <= width < 36rem) and (max-height: 28.25rem) {
+  .reportTitle {
+    display: none;
+  }
+}
+
+@media (width < 64rem) {
+  @container stage (30rem <= width < 36rem) and (max-height: 33.9rem) {
+    .report .cite {
+      display: none;
+    }
+  }
+}
+
+@container stage (max-height: 25rem) {
   .personGrid {
     gap: 0.5rem;
     margin-top: 0.75rem;
@@ -1479,16 +1864,94 @@
   }
 }
 
-/* the smallest phones keep the line, the follow-up and the button */
-@container stage (max-height: 22rem) {
-  .reportHead,
+/* the smallest phones keep the line, the follow-up and the button, and the
+   report keeps its "Sample" tag in the corner; a stage under 17rem wide (a
+   phone with large text) gets there sooner, as its lines wrap more. At 16rem
+   wide and just over 22rem tall the button was cut by a pixel; from 17rem
+   chapter 1 has room to name the speakers */
+@container stage (max-height: 22rem) or ((width < 17rem) and (max-height: 24rem)) {
+  .reportHead > div,
   .turnMeta,
   .personMeta {
     display: none;
   }
 
+  /* with the speaker column gone, the line takes the turn's whole width
+     instead of wrapping inside that 9.5rem column on a wide stage */
+  .turn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* on the slip's top edge, so it never covers the first follow-up */
+  .reportHead .sampleTag {
+    position: absolute;
+    top: -0.6rem;
+    right: 0.875rem;
+    z-index: 1;
+    background: var(--card);
+  }
+
   .item {
     margin-top: 0;
+  }
+
+  .item2 {
+    margin-top: 0.25rem;
+  }
+}
+
+/* under 20rem wide the Approve bar keeps only its button: the count beside it
+   would wrap into a second row, and the chapter's words say it anyway */
+@container stage (width < 20rem) {
+  .count {
+    display: none;
+  }
+
+  .approveBar {
+    justify-content: flex-end;
+  }
+
+  /* the longest phrase, "Send the proposal" (5.81em), fits the line */
+  .keyText {
+    font-size: min(1.15rem, (100cqi - 4rem - 4px) / 6);
+  }
+
+  .itemTitle {
+    font-size: min(0.95rem, (100cqi - 8rem) / 9.1);
+  }
+
+  /* due and with wrap onto two rows here, so each row is shorter */
+  .fMeta .field {
+    min-height: 1.7rem;
+  }
+
+  /* "Jamie Tan" (4.8em) stays on one line beside "With" as well: 8.6rem is
+     the label and the card around it */
+  .fMeta .value {
+    font-size: min(1rem, (100cqi - 8.6rem) / 4.95);
+  }
+
+  /* Jamie's page: the panel's label makes room for the date's own row (see
+     the prep box below) */
+  .prep {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .prep > * {
+    margin-top: 0;
+  }
+
+  .prep .panelLabel {
+    display: none;
+  }
+
+  /* on the card's top edge: in the corner it covered Jamie's name */
+  .personHead .sampleTag {
+    top: -0.6rem;
+    z-index: 1;
+    background: var(--card);
   }
 }
 
@@ -1532,7 +1995,10 @@
 }
 
 /* the door: the app's own Follow-ups page, holding the story's follow-up */
+
 .appWindow {
+  /* its rows wrap by its own width (below) */
+  container: app / inline-size;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1548,6 +2014,17 @@
 .reveal[data-armed]:not([data-in]).appWindow {
   opacity: 0;
   transform: translateY(28px) scale(0.97);
+}
+
+/* paper has no scrolling: whatever has not been revealed yet prints anyway */
+@media print {
+  .reveal[data-armed]:not([data-in]) .bar,
+  .reveal[data-armed]:not([data-in]) .rise,
+  .reveal[data-armed]:not([data-in]).appWindow {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
 
 .appBar {
@@ -1595,7 +2072,47 @@
   background: var(--card);
 }
 
-@media (min-width: 640px) {
+/* a narrow window (a phone with large text): the due date goes under the
+   follow-up instead of over it, then the margins tighten, and last the tick
+   box goes, so every word fits inside the window [REV-25] */
+@container app (width < 14.5rem) {
+  .appRow {
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .appDue {
+    flex-basis: 100%;
+    padding-left: 1.875rem;
+  }
+}
+
+@container app (width < 10.5rem) {
+  .appMain {
+    padding: 1.25rem 0.75rem;
+  }
+
+  .appRow {
+    column-gap: 0.5rem;
+    padding: 0.75rem 0.625rem;
+  }
+
+  .appDue {
+    padding-left: 1.625rem;
+  }
+}
+
+@container app (width < 8.5rem) {
+  .appRow .openBox {
+    display: none;
+  }
+
+  .appDue {
+    padding-left: 0;
+  }
+}
+
+@media (width >= 40rem) {
   .appBody {
     grid-template-columns: 12.5rem minmax(0, 1fr);
   }
@@ -1606,5 +2123,50 @@
 
   .appMain {
     padding: 1.75rem 2rem;
+  }
+}
+
+/* ===========================================================================
+   Forced colours (Windows high contrast): keep what the colours were saying
+   ======================================================================== */
+
+@media (forced-colors: active) {
+  /* an unticked box must not draw a tick */
+  .tickBox:not(.tickOn) svg {
+    visibility: hidden;
+  }
+
+  .railBar {
+    background: GrayText;
+  }
+
+  .railLink[aria-current] .railBar,
+  .railLink[data-done] .railBar {
+    background: Highlight;
+  }
+
+  .railLink[aria-current] .railText {
+    color: Highlight;
+  }
+
+  .bar,
+  .barLead {
+    background: CanvasText;
+  }
+
+  .progress {
+    background: Highlight;
+  }
+
+  .mark {
+    text-decoration: underline 3px Highlight;
+  }
+
+  .chip,
+  .approveBtn,
+  .pillWait,
+  .pillDraft,
+  .pillDone {
+    border: 1px solid transparent;
   }
 }

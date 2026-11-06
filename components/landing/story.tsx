@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { ArrowDown, Check, Quote } from "lucide-react";
-
-import { cn } from "@/lib/utils";
+import { ArrowDown, ArrowRight, Check, Quote } from "lucide-react";
+// a plain class join: nothing here needs Tailwind class merging
+import { clsx as cn } from "cn/lite";
 
 import styles from "./landing.module.css";
 import { fly, hasBox, lift, prefersReducedMotion, type Ghost } from "./motion";
@@ -23,6 +23,9 @@ import { SAMPLE } from "./sample";
  * It is all local state driven by scroll position: nothing is recorded,
  * sent or saved. The stage is hidden from assistive tech, because every
  * chapter carries a text version of what the stage shows.
+ *
+ * Every claim in the chapters is something the app does today; check a change
+ * against the app (and pitch-deck/overclaim-review.md) before making it.
  */
 
 type Pair = [from: string, to: string];
@@ -84,8 +87,8 @@ interface Chapter {
   id: string;
   n: string;
   label: string;
-  /** The meeting's real status in the app at this point. */
-  state: string;
+  /** The meeting's status labels in the app at this point (MEETING_STATUS_LABEL). */
+  state: string[];
   title: string;
   body: React.ReactNode;
   note?: React.ReactNode;
@@ -98,52 +101,54 @@ const CHAPTERS: Chapter[] = [
     id: "written",
     n: "01",
     label: "Written down",
-    state: "transcribing → awaiting_speakers",
+    state: ["Transcribing", "Check speakers"],
     title: "Written down the way it was said.",
     body: (
       <>
         After the chat, WhisperLah, our speech model trained on Singlish and
-        code-switching, writes the transcript and tells the voices apart. You
-        confirm who is who before anything is analysed.
+        code-switching, writes the transcript, and a separate speaker model
+        tells the voices apart. You confirm who is who before the report is
+        written.
       </>
     ),
     note: (
       <>
-        Recorded with consent, in the browser or uploaded afterwards.{" "}
+        Record in the browser or upload afterwards. Nothing leaves your browser
+        until you confirm everyone knew they were being recorded.{" "}
         <a href="#singlish">How accurate is it?</a>
       </>
     ),
     stage:
-      "On screen: the sample transcript, with the line between the turns around it. Voice B is confirmed as Jamie Tan.",
+      "On screen: the sample transcript, with Jamie's line in place between the turns before and after it. Voice B is confirmed as Jamie Tan.",
   },
   {
     id: "drafted",
     n: "02",
     label: "Drafted",
-    state: "analyzing → review",
+    state: ["Analysing", "Needs review"],
     title: "The line becomes a draft follow-up.",
     body: (
       <>
         Lepaq drafts the report: a summary, decisions, follow-ups, a draft
-        email and coaching notes. The task, the date and the person come from
-        what was said, and each follow-up links back to its line.
+        email and coaching notes. The task and the date come from what was
+        said, and each follow-up links back to its line.
       </>
     ),
     stage:
-      "On screen: the draft report for Pilot discussion. Follow-up: Send the proposal, due Friday, with Jamie Tan of Harbour Studio. A second suggestion, Get sign-off from Jamie's boss, starts ticked too, as every draft item does.",
+      "On screen: the draft report for Pilot discussion. Follow-up: “Send the proposal”, due Friday, with Jamie Tan of Harbour Studio. A second suggestion, “Get sign-off from Jamie’s boss”, starts ticked too, as every drafted follow-up does.",
   },
   {
     id: "approved",
     n: "03",
     label: "Your call",
-    state: "review → ready",
+    state: ["Needs review", "Approved"],
     title: "Nothing counts until you approve it.",
     body: (
       <>
-        Every follow-up and every fact starts as a draft. Untick what is
-        wrong, like a task that is really Jamie&apos;s, then approve the
-        report. Only then does anything reach your list or a person&apos;s
-        page.
+        Every follow-up and every fact starts as a draft. Untick the
+        follow-ups that are wrong, like a job that is really Jamie&apos;s,
+        tick the facts worth keeping, then approve the report. Only then does
+        any of it reach your list or a person&apos;s page.
       </>
     ),
     stage:
@@ -153,7 +158,7 @@ const CHAPTERS: Chapter[] = [
     id: "remembered",
     n: "04",
     label: "Remembered",
-    state: "ready",
+    state: ["Approved"],
     title: "Filed with the person who asked.",
     body: (
       <>
@@ -162,15 +167,66 @@ const CHAPTERS: Chapter[] = [
         order and every past chat are on one page.
       </>
     ),
-    note: <>Meet someone twice and it is still one page.</>,
+    note: (
+      <>
+        Pick Jamie from your people next time, or use the same name and
+        company, and it is still one page.
+      </>
+    ),
     stage:
-      "On screen: Jamie Tan's page, with the open follow-up Send the proposal due Friday, two things to remember, and both meetings.",
+      "On screen: Jamie Tan's page, with the open follow-up “Send the proposal” due Friday, two things to remember, her drink, Kopi-o kosong, and how she likes to communicate, one-page proposals and WhatsApp first, and both meetings, Pilot discussion and Intro over kopi.",
   },
 ];
 
 const LAST = CHAPTERS.length;
 
+/**
+ * The story, with a plain fallback: if anything on the stage throws (a page
+ * translator or an extension rewriting its text, say), the chapters still
+ * read as a normal page and the rest of the landing page stays.
+ */
 export function Story() {
+  return (
+    <StoryBoundary>
+      <LiveStory />
+    </StoryBoundary>
+  );
+}
+
+class StoryBoundary extends Component<{ children: React.ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    return this.state.failed ? <StaticStory /> : this.props.children;
+  }
+}
+
+function StaticStory() {
+  return (
+    <section id="story" aria-labelledby="page-title" className={cn(styles.story, styles.storyStatic)}>
+      <ol className={styles.steps}>
+        <li id="chapter-start" className={cn(styles.step, styles.stepOpen)}>
+          <div className={styles.stepCard} data-story-text data-active="">
+            <Opening />
+          </div>
+        </li>
+        {CHAPTERS.map((c) => (
+          <li key={c.id} id={`chapter-${c.id}`} className={styles.step}>
+            <div className={styles.stepCard} data-story-text data-active="">
+              <ChapterText c={c} />
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function LiveStory() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
@@ -188,7 +244,11 @@ export function Story() {
 
     const items = Array.from(list.children) as HTMLElement[];
     const texts = items.map((li) => li.querySelector<HTMLElement>("[data-story-text]")!);
-    const wide = window.matchMedia("(min-width: 1024px)");
+    // the CSS's desktop breakpoint, in rem like it (landing.module.css)
+    const wide = window.matchMedia("(min-width: 64rem)");
+    // the stage only pins once this has run: without it, it would hold a
+    // picture that never changes (CSS: .stageWrap:not([data-live]))
+    wrap.dataset.live = "";
     let shown = 0;
     let target = 0;
     let running = false;
@@ -203,10 +263,12 @@ export function Story() {
     async function transition(from: number, to: number, animate: boolean) {
       window.clearTimeout(nameTimer);
       const plan = animate ? planFor(from, to) : undefined;
-      // copies of the sources, taken before the stage changes under them
+      // copies of the sources, taken before the stage changes under them; a
+      // word still fading in (a name not given yet) has nothing to show, so
+      // it does not fly
       const sources: (Ghost | null)[] = (plan?.pairs ?? []).map(([s]) => {
         const el = q(s);
-        return hasBox(el) ? lift(el, stage!) : null;
+        return hasBox(el) && getComputedStyle(el).opacity !== "0" ? lift(el, stage!) : null;
       });
       const nameNow = to >= 2 || (to === 1 && (from >= 2 || !animate));
 
@@ -289,8 +351,10 @@ export function Story() {
         }
         return idx;
       }
-      const bottom = wrap!.getBoundingClientRect().bottom;
-      const line = bottom + (vh - bottom) * 0.5;
+      // halfway down the room under the stage; when the stage has scrolled away
+      // (short screens unpin it) that is halfway down the screen
+      const bottom = Math.max(0, wrap!.getBoundingClientRect().bottom);
+      const line = Math.max(bottom + (vh - bottom) * 0.5, bottom + 40);
       for (let i = 1; i < texts.length; i++) {
         if (texts[i].getBoundingClientRect().top < line) idx = i;
       }
@@ -305,20 +369,37 @@ export function Story() {
       });
     };
 
+    // A copy in the air flies between boxes measured when it took off. A new
+    // width or a late font moves those boxes, so land it now. Height-only
+    // resizes (a phone's address bar) move nothing on the stage, so they
+    // leave flights alone.
+    let lastWidth = window.innerWidth;
+    const onResize = () => {
+      if (window.innerWidth !== lastWidth) {
+        lastWidth = window.innerWidth;
+        live.forEach((a) => a.finish());
+      }
+      onScroll();
+    };
+    const onFonts = () => live.forEach((a) => a.finish());
+
     // the first reading may land mid-story (a reload, a #link): jump there without flights
     raf = requestAnimationFrame(() => {
       raf = 0;
       request(current(), true);
     });
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
+    document.fonts?.addEventListener("loadingdone", onFonts);
     return () => {
       alive = false;
       cancelAnimationFrame(raf);
       window.clearTimeout(nameTimer);
       live.forEach((a) => a.finish());
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
+      document.fonts?.removeEventListener("loadingdone", onFonts);
+      delete wrap.dataset.live;
     };
   }, []);
 
@@ -332,6 +413,9 @@ export function Story() {
       </a>
 
       <div ref={wrapRef} className={styles.stageWrap}>
+        {/* translate="no": the stage is a sample screen, and a page translator
+            rewriting the text React swaps on it would break the story; every
+            chapter's own text, and its spoken version of the stage, still translates */}
         <div
           ref={stageRef}
           className={styles.stage}
@@ -339,6 +423,7 @@ export function Story() {
           data-named={named ? "" : undefined}
           data-fresh={fresh ? "" : undefined}
           aria-hidden="true"
+          translate="no"
         >
           <div className={styles.stageInner}>
             <LineScene on={step === 0} />
@@ -413,9 +498,16 @@ function ChapterText({ c }: { c: Chapter }) {
       <h2 className={cn(styles.display, styles.h2)}>{c.title}</h2>
       <p className={styles.body}>{c.body}</p>
       {c.note && <p className={styles.note}>{c.note}</p>}
-      <p className={cn(styles.stateLine)}>
-        <span className="sr-only">The meeting&apos;s status in the app: </span>
-        {c.state}
+      <p className={styles.stateLine}>
+        <span className="sr-only">Status in the app: {c.state.join(", then ")}.</span>
+        <span className={styles.stateSteps} aria-hidden>
+          {c.state.map((label, i) => (
+            <span key={label} className={styles.stateStep}>
+              {i > 0 && <ArrowRight className={styles.stateArrow} />}
+              {label}
+            </span>
+          ))}
+        </span>
       </p>
       <p className="sr-only">{c.stage}</p>
     </>
@@ -650,24 +742,27 @@ function WorkScene({ step }: { step: number }) {
             </p>
           </div>
 
+          {/* every piece of text that changes sits alone in its own element, so React
+              swaps elements rather than bare text nodes a translator may have replaced */}
           <footer className={styles.approveBar}>
             <span className={styles.count}>
               {filled ? (
                 <>
-                  {approved ? "1 follow-up" : "2 follow-ups"}
-                  <span className={styles.wideOnly}> · 2 facts to save</span>
+                  <span>{approved ? "1 follow-up" : "2 follow-ups"}</span>
+                  <span className={styles.wideOnly}>{approved ? " · 2 facts saved" : " · 2 facts to review"}</span>
                 </>
               ) : (
-                "Drafted once you name the voices"
+                <span>Drafted once you name the voices</span>
               )}
             </span>
             <span className={cn(styles.approveBtn, approved && styles.approveDone, !filled && styles.gone)}>
               {approved ? (
                 <>
-                  <Check className="size-4" aria-hidden /> Approved
+                  <Check className="size-4" aria-hidden />
+                  <span>Approved</span>
                 </>
               ) : (
-                "Approve report"
+                <span>Approve report</span>
               )}
             </span>
           </footer>

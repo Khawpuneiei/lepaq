@@ -25,12 +25,22 @@ export function LepaqMark({ className }: { className?: string }) {
   );
 }
 
-/** Mark plus the lowercase wordmark, as on the deck's title slide. Sized by font-size. */
-export function LepaqLogo({ className }: { className?: string }) {
+/**
+ * Mark plus the lowercase wordmark, as on the deck's title slide. Sized by
+ * font-size. `wordmarkClassName` lets a crowded header drop the word and keep
+ * the cup.
+ */
+export function LepaqLogo({
+  className,
+  wordmarkClassName,
+}: {
+  className?: string;
+  wordmarkClassName?: string;
+}) {
   return (
     <span className={cn("inline-flex items-center gap-[0.35em] leading-none", className)}>
       <LepaqMark className="h-[1.05em] w-auto shrink-0" />
-      <span className="font-bold tracking-tight">lepaq</span>
+      <span className={cn("font-bold tracking-tight", wordmarkClassName)}>lepaq</span>
     </span>
   );
 }
