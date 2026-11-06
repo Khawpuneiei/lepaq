@@ -6,9 +6,14 @@ builders.
 Upload a meeting recording, get back a report you can send, follow-ups you
 actually keep, and a relationship record for everyone in the room.
 
-Built from `MVP_BUILD_SPEC.md`. Everything the AI produces is a **private
-draft** until the user approves it — that stance shapes the data model and the
-UI, and it is not decoration.
+Built from an internal MVP spec that is not part of this repository; the
+"spec 5.3"-style references in comments point to its sections. Everything the
+AI produces is a **private draft** until the user approves it — that stance
+shapes the data model and the UI, and it is not decoration.
+
+For how a meeting moves through the code, file by file, see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). The schema is in
+[Data model](#data-model).
 
 ---
 
@@ -172,7 +177,8 @@ flowchart LR
 ```
 
 A static copy is in [`docs/architecture.png`](docs/architecture.png) for
-viewers that do not render Mermaid. Regenerate it from the block above (for
+viewers that do not render Mermaid. The step-by-step walk through the code,
+with file paths, is [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Regenerate it from the block above (for
 example at mermaid.live) when the diagram changes.
 
 ---
