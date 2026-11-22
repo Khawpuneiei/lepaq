@@ -12,6 +12,12 @@
  * recording, so the check costs nothing. Anything this cannot read answers
  * "unknown" and the file goes ahead as before; only a track list that is
  * certain to have no audio track stops it.
+ *
+ * "Certain" follows ffmpeg, which the GPU service decodes with: a track that
+ * says it is sound is audio; a track that says it is video is not; anything
+ * else (subtitles, timecode, metadata, a track type this does not know) is
+ * left to ffmpeg, which may still find audio in it, so the answer is
+ * "unknown". Only a file whose every track is video answers "no-audio".
  */
 
 export type AudioTrackCheck = "audio" | "no-audio" | "unknown";
@@ -117,8 +123,11 @@ export async function mp4AudioTrack(read: ReadAt, size: number): Promise<AudioTr
       const moov = await read(at + header, boxSize - header);
       if (moov.length < boxSize - header) return "unknown";
       const types = handlerTypes(moov);
-      if (!types) return "unknown";
-      return types.includes("soun") ? "audio" : "no-audio";
+      if (!types || types.length === 0) return "unknown";
+      if (types.includes("soun")) return "audio";
+      // ffmpeg takes any other non-video track as audio if its sample entry
+      // is an audio codec, so only all-video is certain
+      return types.every((t) => t === "vide") ? "no-audio" : "unknown";
     }
     at += boxSize;
   }
@@ -133,6 +142,7 @@ const TRACKS = 0x1654ae6b;
 const TRACK_ENTRY = 0xae;
 const TRACK_TYPE = 0x83;
 const CLUSTER = 0x1f43b675;
+const VIDEO = 1;
 const AUDIO = 2;
 
 /** An EBML element ID, marker bits kept, as the spec writes them. */
@@ -200,6 +210,7 @@ export async function webmAudioTrack(read: ReadAt, size: number): Promise<AudioT
 }
 
 function tracksHaveAudio(buf: Uint8Array, from: number, to: number): AudioTrackCheck {
+  const types: number[] = [];
   let at = from;
   while (at < to) {
     const id = readId(buf, at);
@@ -207,6 +218,7 @@ function tracksHaveAudio(buf: Uint8Array, from: number, to: number): AudioTrackC
     if (!id || !sz || sz.size === null) return "unknown";
     const body = at + id.len + sz.len;
     if (id.id === TRACK_ENTRY) {
+      let type: number | null = null;
       let inner = body;
       while (inner < body + sz.size) {
         const cid = readId(buf, inner);
@@ -214,14 +226,17 @@ function tracksHaveAudio(buf: Uint8Array, from: number, to: number): AudioTrackC
         if (!cid || !csz || csz.size === null) return "unknown";
         const cbody = inner + cid.len + csz.len;
         if (cid.id === TRACK_TYPE) {
-          let type = 0;
+          if (csz.size < 1 || csz.size > 4 || cbody + csz.size > to) return "unknown";
+          type = 0;
           for (let i = 0; i < csz.size; i++) type = type * 256 + buf[cbody + i];
-          if (type === AUDIO) return "audio";
         }
         inner = cbody + csz.size;
       }
+      if (type === null) return "unknown";
+      types.push(type);
     }
     at = body + sz.size;
   }
-  return "no-audio";
+  if (types.includes(AUDIO)) return "audio";
+  return types.length > 0 && types.every((t) => t === VIDEO) ? "no-audio" : "unknown";
 }

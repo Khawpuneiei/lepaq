@@ -42,6 +42,21 @@ describe("checkAudioTrack", () => {
     }
   });
 
+  it("answers unknown for a track that is neither sound nor video", async () => {
+    // ffmpeg still decodes an MP4 track labelled "text" as audio when its
+    // sample entry is AAC, so refusing this file would be wrong
+    const mp4 = readFileSync(join(DIR, "video-and-audio.mp4"));
+    const relabelled = Buffer.from(mp4);
+    relabelled.write("text", mp4.indexOf("soun"), "latin1");
+    expect(await checkAudioTrack(new Blob([relabelled]), "a.mp4")).toBe("unknown");
+
+    // the WebM audio track's TrackType (0x83, size 1, value 2) made a subtitle
+    const webm = Buffer.from(readFileSync(join(DIR, "video-and-audio.webm")));
+    const at = webm.indexOf(Buffer.from([0x83, 0x81, 0x02]));
+    webm[at + 2] = 0x11;
+    expect(await checkAudioTrack(new Blob([webm]), "a.webm")).toBe("unknown");
+  });
+
   it("trusts MP3 and WAV by extension", async () => {
     expect(await checkAudioTrack(new Blob([]), "call.mp3")).toBe("audio");
     expect(await checkAudioTrack(new Blob([]), "call.WAV")).toBe("audio");
