@@ -32,7 +32,10 @@ upload URL at `{user_id}/{meeting_id}.{ext}`. The audio never passes through
 the route, because Vercel refuses request bodies over about 4.5 MB.
 
 ### 2. Upload (browser)
-The wizard re-encodes the file to mono 16 kHz MP3 with ffmpeg.wasm
+A picked file is first checked for a sound track (`lib/audio/audio-track.ts`
+reads the MP4 or WebM track list). A video recorded without sound is refused
+there, because the GPU service's decoder would fail on it. The wizard then
+re-encodes the file to mono 16 kHz MP3 with ffmpeg.wasm
 (`lib/audio/compress-client.ts`) and PUTs it with `uploadToSignedUrl`. If
 ffmpeg cannot load or the result is no smaller, `compressAudio` returns
 the original file and that is uploaded instead.

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { formatDuration } from "@/lib/talkRatio";
+import { checkAudioTrack } from "@/lib/audio/audio-track";
 import {
   MAX_SOURCE_BYTES,
   compressAudio,
@@ -96,6 +97,18 @@ export function UploadDropzone({
       if (file.size > MAX_SOURCE_BYTES) {
         setError(
           `That file is ${mb(file.size)}, which is too big to process in the browser. Export it as mono MP3 first.`,
+        );
+        return;
+      }
+
+      // A video recorded without sound (a screen recording with the
+      // microphone off) passes the extension check but has nothing to
+      // transcribe; say so now rather than after the upload and a GPU run.
+      // A recording made here always has the microphone in it, and turning
+      // one away would lose it, so only picked files are checked.
+      if (!recorded && (await checkAudioTrack(file, file.name)) === "no-audio") {
+        setError(
+          "That file has no sound in it. It looks like a video recorded without audio, such as a screen recording with the microphone off. Choose a recording that has sound.",
         );
         return;
       }
